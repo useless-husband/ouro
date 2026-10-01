@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build stage 1
+        run: make
+      - name: Lint (clang -Wpedantic -Werror)
+        run: make lint
+      - name: Unit, regression and diagnostic tests
+        run: make test
+      - name: Three-stage bootstrap (stage 2 == stage 3)
+        run: make bootstrap
+      - name: c-testsuite
+        run: make c-testsuite
+  sanitizers:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regression tests with ASan and UBSan
+        run: make asan

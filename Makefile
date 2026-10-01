@@ -6,7 +6,7 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 SRCS    := $(wildcard src/*.c)
 HDRS    := src/ouro.h
 
-.PHONY: all test regress bootstrap clean lint asan
+.PHONY: all test regress bootstrap c-testsuite clean lint asan
 
 all: build/ouro
 
@@ -25,6 +25,10 @@ regress: build/ouro
 # stage 3 = ouro built by stage 2; must be byte-identical to stage 2
 bootstrap: build/ouro
 	scripts/bootstrap.sh
+
+c-testsuite: build/ouro
+	scripts/c-testsuite.sh build/ouro -O0
+	scripts/c-testsuite.sh build/ouro -O1
 
 lint:
 	@mkdir -p build

@@ -719,11 +719,11 @@ static bool nested_declarator_follows(int mode) {
   // Look past attributes: (__attribute__((x)) *p) is still nested.
   while (t->kind == KW_ATTRIBUTE) {
     t = peek_at(++k);
-    int depth = 0;
+    int level = 0;
     for (;;) {
       if (t->kind == '(')
-        depth++;
-      else if (t->kind == ')' && --depth == 0)
+        level++;
+      else if (t->kind == ')' && --level == 0)
         break;
       else if (t->kind == TK_EOF)
         return false;
