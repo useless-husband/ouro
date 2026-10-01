@@ -3,6 +3,13 @@
 
 #include "ouro.h"
 
+// Options read by several stages (set by the driver in main.c).
+bool opt_dump_ir;
+bool opt_dump_ir_raw;
+bool opt_dump_mir;
+int opt_level = 1;
+char *opt_base_file;
+
 // The arena hands out zeroed memory from large calloc'd chunks.  Large
 // requests get their own block so that a big array does not waste the
 // remainder of a chunk.

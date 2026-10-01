@@ -15,6 +15,7 @@ build/ouro: $(SRCS) $(HDRS)
 	$(CC) $(CFLAGS) $(WARN) -o $@ $(SRCS)
 
 test: build/ouro
+	scripts/check.sh build/ouro
 	scripts/regress.sh build/ouro
 	scripts/abi.sh build/ouro 1 2 3
 	scripts/fuzz.sh build/ouro 1 40

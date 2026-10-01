@@ -953,9 +953,11 @@ static Expr *call(Expr *fn, Token *tok) {
               type_str(fn->ty));
   Type *ft = fn->ty->base;
   Vec args = {0};
+  Token *rparen = peek();
   if (!accept(')')) {
     for (;;) {
       vec_push(&args, parse_assign());
+      rparen = peek();
       if (accept(')'))
         break;
       expect(',', "between arguments");
@@ -963,7 +965,7 @@ static Expr *call(Expr *fn, Token *tok) {
   }
   if (ft->has_proto) {
     if (args.len < ft->nparams)
-      error_tok(tok, "too few arguments to function call, expected %d, have %d", ft->nparams,
+      error_tok(rparen, "too few arguments to function call, expected %d, have %d", ft->nparams,
                 args.len);
     if (args.len > ft->nparams && !ft->variadic)
       error_tok(((Expr *)args.data[ft->nparams])->tok,

@@ -11,11 +11,6 @@
 // need the Mach-O SDK headers.
 int _NSGetExecutablePath(char *buf, uint32_t *bufsize);
 
-bool opt_dump_ir;
-bool opt_dump_ir_raw;
-bool opt_dump_mir;
-int opt_level = 1;
-char *opt_base_file;
 
 static bool opt_E;
 static bool opt_S;
