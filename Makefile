@@ -6,7 +6,7 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 SRCS    := $(wildcard src/*.c)
 HDRS    := src/ouro.h
 
-.PHONY: all test regress abi bootstrap c-testsuite lua zlib fuzz clean lint asan
+.PHONY: all test regress abi bootstrap c-testsuite lua zlib fuzz clean lint sanitize
 
 all: build/ouro
 
@@ -51,11 +51,16 @@ lint:
 	$(CC) -std=c11 -fsyntax-only -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-parameter \
 	  -Wno-missing-field-initializers -Werror $(SRCS)
 
-asan:
-	@mkdir -p build/asan
-	$(CC) -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer $(WARN) \
-	  -o build/asan/ouro $(SRCS)
-	scripts/regress.sh build/asan/ouro
+# ouro built with sanitizers, then used to run the regression and ABI
+# tests.  SANITIZE=address,undefined adds ASan where it works (its
+# runtime hangs at startup on the macOS 27 beta used for development).
+SANITIZE ?= undefined
+sanitize:
+	@mkdir -p build/sanitize
+	$(CC) -std=c11 -O1 -g -fsanitize=$(SANITIZE) -fno-sanitize-recover=all \
+	  -fno-omit-frame-pointer $(WARN) -o build/sanitize/ouro $(SRCS)
+	scripts/regress.sh build/sanitize/ouro
+	scripts/abi.sh build/sanitize/ouro 1
 
 clean:
 	rm -rf build

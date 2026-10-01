@@ -27,5 +27,5 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Regression tests with ASan and UBSan
-        run: make asan
+      - name: Regression and ABI tests with ouro built under UBSan
+        run: make sanitize

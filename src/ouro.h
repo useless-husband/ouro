@@ -989,6 +989,8 @@ bool opt_sccp(Func *f);
 bool opt_combine(Func *f);
 bool opt_cse(Func *f);
 bool opt_dce(Func *f);
+bool opt_load_forward(Func *f);
+bool opt_licm(Func *f);
 void opt_remove_trivial_phis(Func *f);
 void opt_loop_depth(Func *f);
 bool dominates(Block *a, Block *b);

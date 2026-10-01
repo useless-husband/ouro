@@ -5,7 +5,8 @@
 // -O0 only cleans up the CFG.  -O1 runs:
 //
 //   simplify-cfg, mem2reg,
-//   2 x (sccp, combine, cse, dce, simplify-cfg)
+//   2 x (sccp, combine, cse, load-forward, dce, simplify-cfg),
+//   licm, combine, cse, dce
 //
 // and then splits critical edges for the instruction selector.
 
@@ -452,8 +453,14 @@ void optimize(Func *f) {
       opt_simplify_cfg(f);
       opt_combine(f);
       opt_cse(f);
+      opt_load_forward(f);
       opt_dce(f);
       opt_simplify_cfg(f);
+    }
+    if (opt_licm(f)) {
+      opt_combine(f);
+      opt_cse(f);
+      opt_dce(f);
     }
   }
   opt_split_critical_edges(f);
