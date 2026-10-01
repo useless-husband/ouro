@@ -993,6 +993,110 @@ static void sel_inst(Inst *i) {
   ICE("cannot select %s", ir_op_name[i->op]);
 }
 
+// Machine-level dead code: folding a value into addressing modes or
+// shifted operands can leave the instruction that computed it on its
+// own (when the IR value had several users, all folded).  Remove pure
+// instructions whose result nothing reads, until none is left.
+static bool mi_is_pure_def(MInst *mi) {
+  switch (mi->op) {
+  case M_MOV:
+  case M_FMOV:
+  case M_MOVI:
+  case M_FMOVI:
+  case M_FMOV_GF:
+  case M_FMOV_FG:
+  case M_ADDR:
+  case M_FRAME:
+  case M_ARGADDR:
+  case M_ADD:
+  case M_SUB:
+  case M_AND:
+  case M_ORR:
+  case M_EOR:
+  case M_ADDI:
+  case M_ANDI:
+  case M_ORRI:
+  case M_EORI:
+  case M_MUL:
+  case M_MADD:
+  case M_MSUB:
+  case M_SDIV:
+  case M_UDIV:
+  case M_LSL:
+  case M_LSR:
+  case M_ASR:
+  case M_LSLI:
+  case M_LSRI:
+  case M_ASRI:
+  case M_NEG:
+  case M_MVN:
+  case M_SXTB:
+  case M_SXTH:
+  case M_SXTW:
+  case M_UXTB:
+  case M_UXTH:
+  case M_UXTW:
+  case M_FADD:
+  case M_FSUB:
+  case M_FMUL:
+  case M_FDIV:
+  case M_FNEG:
+  case M_SCVTF:
+  case M_UCVTF:
+  case M_FCVTZS:
+  case M_FCVTZU:
+  case M_FCVT:
+  case M_CSET:
+    return is_vreg(mi->rd);
+  default:
+    return false;
+  }
+}
+
+static void mir_dce(Func *f) {
+  int *count = xalloc(sizeof(int) * (f->nvregs + 1));
+  int uses[64], defs[64];
+  for (Block *b = f->entry; b; b = b->next)
+    for (MInst *mi = b->mfirst; mi; mi = mi->next) {
+      if (mi->op == M_PMOVE) {
+        for (int k = 0; k < mi->pm->n; k++)
+          if (is_vreg(mi->pm->src[k]))
+            count[mi->pm->src[k] - R_VREG]++;
+        continue;
+      }
+      int nu, nd;
+      minst_regs(mi, uses, &nu, defs, &nd);
+      for (int k = 0; k < nu; k++)
+        if (is_vreg(uses[k]))
+          count[uses[k] - R_VREG]++;
+    }
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (Block *b = f->entry; b; b = b->next)
+      for (MInst *mi = b->mlast; mi;) {
+        MInst *prev = mi->prev;
+        if (mi_is_pure_def(mi) && count[mi->rd - R_VREG] == 0) {
+          int nu, nd;
+          minst_regs(mi, uses, &nu, defs, &nd);
+          for (int k = 0; k < nu; k++)
+            if (is_vreg(uses[k]))
+              count[uses[k] - R_VREG]--;
+          if (mi->prev)
+            mi->prev->next = mi->next;
+          else
+            b->mfirst = mi->next;
+          if (mi->next)
+            mi->next->prev = mi->prev;
+          else
+            b->mlast = mi->prev;
+          changed = true;
+        }
+        mi = prev;
+      }
+  }
+}
+
 void isel_func(Func *f) {
   fn = f;
   f->nvregs = 0;
@@ -1049,6 +1153,7 @@ void isel_func(Func *f) {
       if (!i->folded)
         sel_inst(i);
   }
+  mir_dce(f);
 }
 
 //
