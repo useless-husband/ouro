@@ -104,6 +104,10 @@ static void emit_mov_imm(int rd, int64_t v, int sz) {
       emitf("\tmovn %s, #0\n", xname(rd, sz));
     return;
   }
+  if (nonzero == 1 && (u & 0xFFFF) == u) {
+    emitf("\tmov %s, #%llu\n", xname(rd, sz), (unsigned long long)u);
+    return;
+  }
   bool first = true;
   for (int i = 0; i < nchunks; i++) {
     uint64_t chunk = (u >> (16 * i)) & 0xFFFF;
