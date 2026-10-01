@@ -186,10 +186,6 @@ class Gen:
         if k == 10:
             other = self.r.choice(TYPE_NAMES)
             return f"(({ty}){self.expr(other, scope, depth - 1)})"
-        if k == 11 and self.funcs and self.loop_depth <= 1:
-            f = self.r.choice(self.funcs)
-            args = ", ".join(self.expr(p, scope, depth - 1) for p in f[2])
-            return f"(({ty}){f[0]}({args}))"
         if k == 12:
             # floating point detour (exactly representable small values)
             # through long first: an out-of-range double to int conversion is undefined
@@ -256,8 +252,21 @@ class Gen:
             self.indent -= 1
             self.emit("}")
             return
-        if r < 0.9:
+        if r < 0.86:
             self.emit(f"mix((uint64_t){self.expr(self.r.choice(TYPE_NAMES), scope, 3)});")
+            return
+        if r < 0.9 and self.funcs and self.loop_depth <= 1:
+            # Calls only appear as whole statements with side-effect-free
+            # arguments: C leaves the order of evaluation inside an
+            # expression unspecified, and the callees modify globals.
+            f = self.r.choice(self.funcs)
+            args = ", ".join(self.expr(p, scope, 2) for p in f[2])
+            locals_ = [v for v in scope if v[0] not in self.readonly and v[0][0] in "lp"]
+            if locals_ and self.r.random() < 0.6:
+                name, ty = self.r.choice(locals_)
+                self.emit(f"{name} = ({ty}){f[0]}({args});")
+            else:
+                self.emit(f"mix((uint64_t){f[0]}({args}));")
             return
         # struct work
         self.emit("{")

@@ -6,7 +6,7 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 SRCS    := $(wildcard src/*.c)
 HDRS    := src/ouro.h
 
-.PHONY: all test regress bootstrap c-testsuite lua zlib fuzz clean lint asan
+.PHONY: all test regress abi bootstrap c-testsuite lua zlib fuzz clean lint asan
 
 all: build/ouro
 
@@ -16,7 +16,11 @@ build/ouro: $(SRCS) $(HDRS)
 
 test: build/ouro
 	scripts/regress.sh build/ouro
+	scripts/abi.sh build/ouro 1 2 3
 	scripts/fuzz.sh build/ouro 1 40
+
+abi: build/ouro
+	scripts/abi.sh build/ouro 1 2 3 4 5 6 7 8 9 10
 
 regress: build/ouro
 	scripts/regress.sh build/ouro
