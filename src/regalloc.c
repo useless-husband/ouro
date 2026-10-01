@@ -448,6 +448,12 @@ void regalloc_func(Func *f) {
   uint64_t **gen = xalloc(sizeof(uint64_t *) * (nblocks + 1));
   uint64_t **kill = xalloc(sizeof(uint64_t *) * (nblocks + 1));
   compute_liveness(blocks, nblocks, gen, kill);
+  // Nothing is live into the entry block: a virtual register that is
+  // would be read before it is ever written (an instruction selector
+  // bug, such as emitting a use before the code that computes it).
+  for (int v = 0; v < nv; v++)
+    if (bit_test(f->entry->live_in, v))
+      ICE("%s: virtual register %%%d is used before it is defined", f->name, v);
 
   Interval *iv = xalloc(sizeof(Interval) * (nv + 1));
   for (int v = 0; v < nv; v++) {

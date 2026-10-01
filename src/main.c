@@ -21,6 +21,7 @@ static bool opt_E;
 static bool opt_S;
 static bool opt_c;
 static bool opt_v;
+static bool opt_shared;
 static char *opt_o;
 static Vec input_files;
 static Vec link_args;
@@ -45,6 +46,7 @@ static void usage(int status) {
           "  --dump-ir      print the optimised IR of each function to stderr\n"
           "  --dump-ir-raw  print the IR before optimisation\n"
           "  --dump-mir     print machine code after register allocation\n"
+          "  -shared        link a dynamic library\n"
           "  -l<lib> -L<dir> -Wl,<args>   passed to the linker\n"
           "  -v             show the commands that are run\n"
           "  --version      print the version\n");
@@ -95,6 +97,15 @@ static void parse_args(int argc, char **argv) {
     }
     if (str_eq(a, "-c")) {
       opt_c = true;
+      continue;
+    }
+    if (str_eq(a, "-shared") || str_eq(a, "-dynamiclib")) {
+      opt_shared = true;
+      continue;
+    }
+    if (str_eq(a, "-undefined")) {
+      vec_push(&link_args, "-undefined");
+      vec_push(&link_args, take_arg(argc, argv, &i, "-undefined"));
       continue;
     }
     if (str_eq(a, "-v")) {
@@ -388,6 +399,8 @@ static void link_objects(Vec *objs, char *output) {
     vec_push(&args, "-syslibroot");
     vec_push(&args, sdk);
   }
+  if (opt_shared)
+    vec_push(&args, "-dylib");
   vec_push(&args, "-o");
   vec_push(&args, output);
   for (int i = 0; i < objs->len; i++)

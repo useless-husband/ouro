@@ -6,7 +6,7 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 SRCS    := $(wildcard src/*.c)
 HDRS    := src/ouro.h
 
-.PHONY: all test regress bootstrap c-testsuite clean lint asan
+.PHONY: all test regress bootstrap c-testsuite lua clean lint asan
 
 all: build/ouro
 
@@ -29,6 +29,9 @@ bootstrap: build/ouro
 c-testsuite: build/ouro
 	scripts/c-testsuite.sh build/ouro -O0
 	scripts/c-testsuite.sh build/ouro -O1
+
+lua: build/ouro
+	scripts/lua.sh build/ouro -O1
 
 lint:
 	@mkdir -p build

@@ -725,12 +725,15 @@ static void sel_br(Inst *t) {
   Inst *c = t->args[0];
   Block *tb = t->blocks[0];
   Block *fb = t->blocks[1];
+  // The condition must be materialised before the branch is appended:
+  // reg_of may emit instructions.
   if (c->folded) {
     // cmp a, #0 followed by b.eq/b.ne is cbz/cbnz.
     if (is_icmp(c->op) && (c->op == IR_EQ || c->op == IR_NE) && c->args[1]->op == IR_ICONST &&
         c->args[1]->ival == 0 && c->args[0]->op != IR_ICONST) {
+      int r = reg_of(c->args[0]);
       MInst *mi = branch(c->op == IR_NE ? M_CBNZ : M_CBZ, tb);
-      mi->rn = reg_of(c->args[0]);
+      mi->rn = r;
       mi->sz = (char)size_of(c->args[0]->ty);
       branch(M_B, fb);
       return;
@@ -742,8 +745,9 @@ static void sel_br(Inst *t) {
     branch(M_B, fb);
     return;
   }
+  int r = reg_of(c);
   MInst *mi = branch(M_CBNZ, tb);
-  mi->rn = reg_of(c);
+  mi->rn = r;
   mi->sz = (char)size_of(c->ty);
   branch(M_B, fb);
 }
