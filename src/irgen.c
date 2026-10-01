@@ -1092,6 +1092,12 @@ static Block *label_block(Label *l) {
   return l->bb;
 }
 
+// The number of values in a case range minus one, computed without
+// signed overflow (a range may span all 64-bit values).
+static uint64_t case_span(Stmt *c) {
+  return (uint64_t)c->case_hi - (uint64_t)c->case_lo;
+}
+
 static int cmp_case(const void *a, const void *b) {
   Stmt *x = *(Stmt **)a;
   Stmt *y = *(Stmt **)b;
@@ -1116,16 +1122,16 @@ static void gen_switch(Stmt *s) {
   int64_t nvals = 0;
   for (int i = 0; i < s->ncases; i++) {
     Stmt *c = s->cases[i];
-    if (c->case_hi - c->case_lo < 64)
-      nvals += c->case_hi - c->case_lo + 1;
+    if (case_span(c) < 64)
+      nvals += (int64_t)case_span(c) + 1;
   }
   int vty = v->ty;
   for (int i = 0; i < s->ncases; i++) {
     Stmt *c = s->cases[i];
-    if (c->case_hi - c->case_lo < 64)
+    if (case_span(c) < 64)
       continue;
     Inst *d = bin(IR_SUB, vty, v, iconst(vty, c->case_lo));
-    Inst *in = bin(IR_ULE, IR_I32, d, iconst(vty, c->case_hi - c->case_lo));
+    Inst *in = bin(IR_ULE, IR_I32, d, iconst(vty, (int64_t)case_span(c)));
     Block *next = new_block();
     br(in, c->bb, next);
     start_block(next);
@@ -1144,10 +1150,11 @@ static void gen_switch(Stmt *s) {
   int n = 1;
   for (int i = 0; i < s->ncases; i++) {
     Stmt *c = cases[i];
-    if (c->case_hi - c->case_lo >= 64)
+    if (case_span(c) >= 64)
       continue;
-    for (int64_t x = c->case_lo; x <= c->case_hi; x++) {
-      sw->case_vals[n - 1] = x;
+    // Counted, not compared: x <= case_hi would never fail for INT64_MAX.
+    for (uint64_t k = 0; k <= case_span(c); k++) {
+      sw->case_vals[n - 1] = (int64_t)((uint64_t)c->case_lo + k);
       sw->blocks[n++] = c->bb;
     }
   }

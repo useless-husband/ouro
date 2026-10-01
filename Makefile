@@ -6,7 +6,7 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 SRCS    := $(wildcard src/*.c)
 HDRS    := src/ouro.h
 
-.PHONY: all test regress abi bootstrap c-testsuite lua zlib sqlite fuzz clean lint sanitize
+.PHONY: all test regress abi bootstrap stage2-test c-testsuite lua zlib sqlite fuzz clean lint sanitize
 
 all: build/ouro
 
@@ -31,6 +31,12 @@ regress: build/ouro
 # stage 3 = ouro built by stage 2; must be byte-identical to stage 2
 bootstrap: build/ouro
 	scripts/bootstrap.sh
+
+# The self-compiled compiler must pass the same tests as stage 1.
+stage2-test: bootstrap
+	scripts/regress.sh build/stage2/ouro
+	scripts/check.sh build/stage2/ouro
+	scripts/c-testsuite.sh build/stage2/ouro -O1
 
 c-testsuite: build/ouro
 	scripts/c-testsuite.sh build/ouro -O0

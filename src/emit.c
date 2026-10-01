@@ -119,8 +119,8 @@ static void emit_mov_imm(int rd, int64_t v, int sz) {
   }
 }
 
-// rd = rn + imm for any imm (rn may be sp).  Uses x17 for immediates
-// that do not fit two add/sub instructions.
+// rd = rn + imm for any imm (rn may be sp).  Immediates that do not fit
+// two add/sub instructions are built in a scratch register first.
 static void emit_add_imm(int rd, int rn, int64_t imm, int sz) {
   const char *op = imm < 0 ? "sub" : "add";
   uint64_t a = imm < 0 ? (uint64_t)(-imm) : (uint64_t)imm;
@@ -141,9 +141,15 @@ static void emit_add_imm(int rd, int rn, int64_t imm, int sz) {
             (unsigned long long)(a & 0xFFF));
     return;
   }
-  ASSERT(rd != R_X17 || rn != R_X17 || true);
-  emit_mov_imm(R_X17, (int64_t)a, 8);
-  emitf("\t%s %s, %s, x17\n", op, xname(rd, sz), xname(rn, sz));
+  // The constant needs a register that is not the source: x17 unless
+  // the source is x17 (a reloaded base), then the destination itself,
+  // then x15 (only used for index registers, which never carry an
+  // offset).
+  int tmp = R_X17;
+  if (rn == R_X17)
+    tmp = (rd != R_X17 && rd != R_SP) ? rd : R_X15;
+  emit_mov_imm(tmp, (int64_t)a, 8);
+  emitf("\t%s %s, %s, %s\n", op, xname(rd, sz), xname(rn, sz), xname(tmp, 8));
 }
 
 bool fmov_imm_ok(double v, int sz) {

@@ -21,6 +21,8 @@ jobs:
         run: make test
       - name: Three-stage bootstrap (stage 2 == stage 3)
         run: make bootstrap
+      - name: The self-compiled compiler passes the tests too
+        run: make stage2-test
       - name: c-testsuite
         run: make c-testsuite
   programs:

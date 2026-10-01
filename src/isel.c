@@ -156,10 +156,11 @@ static int reg_or_zr(Inst *v) {
   return reg_of(v);
 }
 
+// Whether v (or -v, by switching between add and sub) is a 12-bit
+// immediate, optionally shifted left by 12.
 static bool fits_addsub_imm(int64_t v) {
-  if (v < 0)
-    v = -v;
-  return (v >= 0 && v <= 4095) || ((v & 0xFFF) == 0 && v <= (4095LL << 12));
+  uint64_t a = v < 0 ? 0 - (uint64_t)v : (uint64_t)v; // INT64_MIN stays out of range
+  return a <= 4095 || ((a & 0xFFF) == 0 && a <= (4095ULL << 12));
 }
 
 // Recognises base + (index << shift) where the index may be a 32-bit
@@ -760,7 +761,8 @@ static void sel_switch(Inst *i) {
   }
   int64_t lo = i->case_vals[0];
   int64_t hi = i->case_vals[n - 1];
-  uint64_t range = (uint64_t)(hi - lo) + 1;
+  uint64_t range = (uint64_t)hi - (uint64_t)lo + 1; // no signed overflow
+
   int rv = reg_of(v);
 
   if (n >= 4 && range <= (uint64_t)n * 3 && range <= 4096) {
@@ -796,7 +798,7 @@ static void sel_switch(Inst *i) {
     for (uint64_t k = 0; k < range; k++)
       jt->jt[k] = dflt;
     for (int k = 0; k < n; k++)
-      jt->jt[i->case_vals[k] - lo] = i->blocks[k + 1];
+      jt->jt[(uint64_t)i->case_vals[k] - (uint64_t)lo] = i->blocks[k + 1];
     add_mi(jt);
     return;
   }
