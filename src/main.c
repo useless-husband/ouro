@@ -449,8 +449,11 @@ int main(int argc, char **argv) {
       if (input_files.len > 1) {
         pid_t pid = fork();
         if (pid == 0) {
+          // _exit, not exit: the parent's atexit handler would delete
+          // the temporary files, including the one just written.
           compile_to_asm(in, asm_file);
-          exit(0);
+          fflush(NULL);
+          _exit(0);
         }
         int status;
         waitpid(pid, &status, 0);

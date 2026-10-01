@@ -452,8 +452,11 @@ void regalloc_func(Func *f) {
   // would be read before it is ever written (an instruction selector
   // bug, such as emitting a use before the code that computes it).
   for (int v = 0; v < nv; v++)
-    if (bit_test(f->entry->live_in, v))
+    if (bit_test(f->entry->live_in, v)) {
+      if (getenv("OURO_VERIFY"))
+        mir_dump(stderr, f);
       ICE("%s: virtual register %%%d is used before it is defined", f->name, v);
+    }
 
   Interval *iv = xalloc(sizeof(Interval) * (nv + 1));
   for (int v = 0; v < nv; v++) {

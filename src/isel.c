@@ -289,9 +289,12 @@ static void decide_folding(void) {
     for (Inst *i = b->first; i; i = i->next) {
       if (i->op != IR_SHL || i->args[1]->op != IR_ICONST || i->nuses != 1 || i->args[0]->op == IR_ICONST)
         continue;
+      // Not when the other operand is a constant: sel_binary would swap
+      // the operands of add, or select neg for 0 - x, and never use
+      // the shifted form.
       Inst *u = i->users[0];
       if (u->bb == b && (u->op == IR_ADD || u->op == IR_SUB) && u->args[1] == i &&
-          u->args[0] != i && u->ty == i->ty)
+          u->args[0] != i && u->args[0]->op != IR_ICONST && u->ty == i->ty)
         i->folded = true;
     }
 }
