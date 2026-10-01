@@ -251,6 +251,23 @@ static char *mem_operand(MemRef m, int size, int scratch, int base_which, bool *
   } else {
     base = use(m.base, base_which);
   }
+  if (m.index != R_NONE) {
+    // Register offset: [base, index{, extend #shift}].  The slot base
+    // or a constant offset is first added into the scratch register.
+    ASSERT(m.off == 0);
+    int idx = use(m.index, 2);
+    if (off != 0 || base == R_SP) {
+      emit_add_imm(scratch, base, off, 8);
+      base = scratch;
+    }
+    const char *ext = m.ext == 1 ? "sxtw" : m.ext == 2 ? "uxtw" : "lsl";
+    if (m.shift || m.ext)
+      snprintf(buf, sizeof(buf), "[%s, %s, %s #%d]", xname(base, 8), xname(idx, m.ext ? 4 : 8),
+               ext, m.shift);
+    else
+      snprintf(buf, sizeof(buf), "[%s, %s]", xname(base, 8), xname(idx, 8));
+    return buf;
+  }
   if (off >= 0 && off % size == 0 && off / size < 4096) {
     if (off)
       snprintf(buf, sizeof(buf), "[%s, #%lld]", xname(base, 8), (long long)off);

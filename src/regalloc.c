@@ -115,12 +115,16 @@ int minst_regs(MInst *mi, int *uses, int *nuses, int *defs, int *ndefs) {
   case M_LDR:
     if (mi->mem.base != R_NONE)
       push_reg(uses, nuses, mi->mem.base);
+    if (mi->mem.index != R_NONE)
+      push_reg(uses, nuses, mi->mem.index);
     push_reg(defs, ndefs, mi->rd);
     break;
   case M_STR:
     push_reg(uses, nuses, mi->rn);
     if (mi->mem.base != R_NONE)
       push_reg(uses, nuses, mi->mem.base);
+    if (mi->mem.index != R_NONE)
+      push_reg(uses, nuses, mi->mem.index);
     break;
   case M_MEMCPY:
     if (mi->mem.base != R_NONE)

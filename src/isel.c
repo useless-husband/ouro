@@ -55,8 +55,10 @@ static MInst *new_mi(int op) {
   mi->sz = 8;
   mi->mem.base = R_NONE;
   mi->mem.slot = -1;
+  mi->mem.index = R_NONE;
   mi->mem2.base = R_NONE;
   mi->mem2.slot = -1;
+  mi->mem2.index = R_NONE;
   return mi;
 }
 
@@ -160,16 +162,68 @@ static bool fits_addsub_imm(int64_t v) {
   return (v >= 0 && v <= 4095) || ((v & 0xFFF) == 0 && v <= (4095LL << 12));
 }
 
-// A memory operand for the address `a`.
-static MemRef mem_of(Inst *a) {
+// Recognises base + (index << shift) where the index may be a 32-bit
+// value extended to 64 bits: the register-offset addressing forms.
+// `size` is the access size; the shift must be 0 or log2(size).
+static bool index_pattern(Inst *a, int size, Inst **base, Inst **index, int *ext, int *shift) {
+  if (a->op != IR_ADD || a->ty != IR_I64)
+    return false;
+  Inst *b = a->args[0];
+  Inst *x = a->args[1];
+  if (b->op == IR_ICONST || x->op == IR_ICONST)
+    return false;
+  int sh = 0;
+  if (x->op == IR_SHL && x->args[1]->op == IR_ICONST) {
+    sh = (int)x->args[1]->ival;
+    if (sh != 0 && (1 << sh) != size)
+      return false;
+    x = x->args[0];
+  }
+  int e = 0;
+  if (x->op == IR_SEXT32 || x->op == IR_ZEXT32) {
+    e = x->op == IR_SEXT32 ? 1 : 2;
+    x = x->args[0];
+  }
+  if (x->op == IR_ICONST)
+    return false;
+  *base = b;
+  *index = x;
+  *ext = e;
+  *shift = sh;
+  return true;
+}
+
+static int access_size_of(Inst *mem_user) {
+  return ir_size(mem_user->memty);
+}
+
+// A memory operand for the address `a` of an access of `size` bytes.
+static MemRef mem_of_sized(Inst *a, int size) {
   MemRef m;
   m.base = R_NONE;
   m.slot = -1;
   m.off = 0;
+  m.index = R_NONE;
+  m.ext = 0;
+  m.shift = 0;
   int64_t off = 0;
   if (a->op == IR_ADD && a->args[1]->op == IR_ICONST && a->ty == IR_I64) {
     off = a->args[1]->ival;
     a = a->args[0];
+  } else if (a->folded && size > 0) {
+    Inst *base, *index;
+    int ext, shift;
+    if (index_pattern(a, size, &base, &index, &ext, &shift)) {
+      if (is_slot_addr(base)) {
+        m.slot = base->aux;
+      } else {
+        m.base = reg_of(base);
+      }
+      m.index = reg_of(index);
+      m.ext = (char)ext;
+      m.shift = (char)shift;
+      return m;
+    }
   }
   if (is_slot_addr(a)) {
     m.slot = a->aux;
@@ -179,6 +233,10 @@ static MemRef mem_of(Inst *a) {
   m.base = reg_of(a);
   m.off = off;
   return m;
+}
+
+static MemRef mem_of(Inst *a) {
+  return mem_of_sized(a, 0);
 }
 
 //
@@ -284,6 +342,35 @@ static void decide_folding(void) {
       if (all_mem)
         i->folded = true;
     }
+  // base + (index << k) whose every use is the address of a load or
+  // store of 2^k bytes becomes the register-offset addressing form; the
+  // shift and extension inside fold too when nothing else uses them.
+  for (Block *b = fn->entry; b; b = b->next)
+    for (Inst *i = b->first; i; i = i->next) {
+      if (i->folded || i->nuses == 0)
+        continue;
+      bool ok = true;
+      for (int k = 0; k < i->nusers && ok; k++) {
+        Inst *u = i->users[k];
+        bool as_addr = (u->op == IR_LOAD && u->args[0] == i) ||
+                       (u->op == IR_STORE && u->args[1] == i && u->args[0] != i);
+        Inst *base, *index;
+        int ext, shift;
+        if (!as_addr || !index_pattern(i, access_size_of(u), &base, &index, &ext, &shift))
+          ok = false;
+      }
+      if (!ok)
+        continue;
+      i->folded = true;
+      Inst *x = i->args[1];
+      if (x->op == IR_SHL && x->nuses == 1 && x->bb == b) {
+        x->folded = true;
+        x = x->args[0];
+      }
+      if ((x->op == IR_SEXT32 || x->op == IR_ZEXT32) && x->nuses == 1 && x->bb == b &&
+          (i->args[1] == x || i->args[1]->folded))
+        x->folded = true;
+    }
   // x << k used only by an add or sub becomes a shifted operand.
   for (Block *b = fn->entry; b; b = b->next)
     for (Inst *i = b->first; i; i = i->next) {
@@ -294,7 +381,8 @@ static void decide_folding(void) {
       // the shifted form.
       Inst *u = i->users[0];
       if (u->bb == b && (u->op == IR_ADD || u->op == IR_SUB) && u->args[1] == i &&
-          u->args[0] != i && u->args[0]->op != IR_ICONST && u->ty == i->ty)
+          u->args[0] != i && u->args[0]->op != IR_ICONST && u->ty == i->ty && !u->folded &&
+          !i->folded)
         i->folded = true;
     }
 }
@@ -444,7 +532,7 @@ static void sel_load(Inst *i) {
   mi->rd = vreg_of(i);
   mi->memty = i->memty;
   mi->is_signed = i->is_signed;
-  mi->mem = mem_of(i->args[0]);
+  mi->mem = mem_of_sized(i->args[0], ir_size(i->memty));
   mi->sz = (char)size_of(i->ty);
   add_mi(mi);
 }
@@ -455,7 +543,7 @@ static void sel_store(Inst *i) {
   MInst *mi = new_mi(M_STR);
   mi->rn = rv;
   mi->memty = i->memty;
-  mi->mem = mem_of(i->args[1]);
+  mi->mem = mem_of_sized(i->args[1], ir_size(i->memty));
   add_mi(mi);
 }
 
@@ -646,6 +734,11 @@ static void phi_moves(Block *succ) {
         v = p->args[k];
     ASSERT(v);
     pm_add_value(pm, vreg_of(p), v);
+    // Prefer the phi's register for the incoming value: then the copy
+    // disappears (the allocator resolves a hint to another virtual
+    // register when it assigns this one).
+    if (pm->src[pm->n - 1] >= R_VREG)
+      hint(pm->src[pm->n - 1], vreg_of(p));
   }
   emit_pmove(pm);
 }

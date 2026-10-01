@@ -66,4 +66,19 @@ for f in tests/ir/*.c; do
   fi
 done
 echo "ir: $n optimizer tests pass"
+
+# Instruction selection and allocation: CHECK patterns over the assembly.
+n=0
+for f in tests/asm/*.c; do
+  opts=$(sed -n 's|^// RUN: ||p' "$f" | head -1)
+  if ! "$OURO" $opts -S -o "$TMP/s.s" "$f" 2>"$TMP/err"; then
+    echo "FAIL asm $f: compile error"
+    fail=$((fail + 1))
+  elif python3 tests/ir/filecheck.py "$f" "$TMP/s.s"; then
+    n=$((n + 1))
+  else
+    fail=$((fail + 1))
+  fi
+done
+echo "asm: $n code generation tests pass"
 [ $fail -eq 0 ]

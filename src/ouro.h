@@ -1114,6 +1114,9 @@ typedef struct {
   int base;  // register, or R_NONE when `slot` is used
   int slot;  // stack slot index, or -1
   int64_t off;
+  int index; // index register (register-offset form), or R_NONE
+  char ext;  // index extension: 0 = 64-bit (lsl), 1 = sxtw, 2 = uxtw
+  char shift; // index shift: 0 or log2 of the access size
 } MemRef;
 
 typedef struct {
