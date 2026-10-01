@@ -29,7 +29,7 @@ built by stage 2. Every claim below comes with the command that checks it.
 | Check | Result | Command |
 |---|---|---|
 | [c-testsuite](https://github.com/c-testsuite/c-testsuite) (all 220 single-exec tests, fetched at test time, commit 5c72756) | **220/220** at -O0 and at -O1 | `make c-testsuite` |
-| [Lua 5.4.7](https://www.lua.org) built from its release tarball, running Lua's own test suite `all.lua` | all 27 test files pass ("final OK"), also with Lua's internal assertion and C-API test library compiled in; the suite's C modules are built by ouro as dynamic libraries | `make lua` |
+| [Lua 5.4.7](https://www.lua.org) built from its release tarball, running Lua's own test suite `all.lua` with `_port=true` (which skips only platform-dependent tests; the interactive-prompt test needs GNU readline and fails the same way with clang) | all 27 test files pass ("final OK"), also with Lua's internal assertion and C-API test library compiled in; the suite's C modules are built by ouro as dynamic libraries | `make lua` |
 | [zlib 1.3.1](https://zlib.net) | its `example` self-test passes; `minigzip` round-trips with the system `gzip` both ways and writes the same bytes as a clang build | `make zlib` |
 | [SQLite 3.50.4](https://sqlite.org) (the 263,000-line amalgamation and its shell, FTS5 enabled) | compiles at -O0 and -O1; a SQL workload (recursive CTEs, window functions, JSON, FTS5, transactions, `VACUUM`, `integrity_check`) prints exactly what a clang build prints | `make sqlite` |
 | Calling convention | callers and callees generated for 80 signatures per seed, compiled by ouro and clang in every combination, print the same as an all-clang build | `make abi` |

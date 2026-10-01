@@ -22,7 +22,7 @@ stage2 build: 1.12 s, stage3 build: 1.51 s
 | 檢查項目 | 結果 | 指令 |
 |---|---|---|
 | [c-testsuite](https://github.com/c-testsuite/c-testsuite)（全部 220 個 single-exec 測試，測試時才下載，commit 5c72756） | -O0 與 -O1 都是 **220/220** | `make c-testsuite` |
-| 從官方原始碼包建置的 [Lua 5.4.7](https://www.lua.org)，執行 Lua 自己的測試套件 `all.lua` | 27 個測試檔全部通過（"final OK"）；連同 Lua 內部斷言與 C API 測試函式庫一起編進去也通過；測試用的 C 模組也由 ouro 編成動態函式庫 | `make lua` |
+| 從官方原始碼包建置的 [Lua 5.4.7](https://www.lua.org)，以 `_port=true` 執行 Lua 自己的測試套件 `all.lua`（只跳過與平台有關的測試；互動提示的測試需要 GNU readline，用 clang 建置也一樣失敗） | 27 個測試檔全部通過（"final OK"）；連同 Lua 內部斷言與 C API 測試函式庫一起編進去也通過；測試用的 C 模組也由 ouro 編成動態函式庫 | `make lua` |
 | [zlib 1.3.1](https://zlib.net) | 它的 `example` 自我測試通過；`minigzip` 與系統的 `gzip` 雙向互通，而且壓縮結果和 clang 建置的版本逐位元組相同 | `make zlib` |
 | [SQLite 3.50.4](https://sqlite.org)（26 萬 3 千行的 amalgamation 與它的 shell，啟用 FTS5） | -O0 與 -O1 都能編譯；一組 SQL 工作負載（遞迴 CTE、視窗函式、JSON、FTS5、交易、`VACUUM`、`integrity_check`）的輸出和 clang 建置的版本完全相同 | `make sqlite` |
 | 呼叫慣例 | 每個亂數種子產生 80 種函式簽名的呼叫端與被呼叫端，分別用 ouro 與 clang 編譯並交叉組合，輸出都和全用 clang 的版本相同 | `make abi` |
