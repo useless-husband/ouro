@@ -89,7 +89,7 @@ bool is_complete(Type *t) {
   if (is_record(t) || t->kind == TY_ENUM)
     return t->rec->complete;
   if (t->kind == TY_ARRAY)
-    return t->len >= 0 && is_complete(t->base);
+    return (t->len >= 0 || t->is_vla) && is_complete(t->base);
   return true;
 }
 

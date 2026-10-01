@@ -167,6 +167,13 @@ bool fmov_imm_ok(double v, int sz) {
 // Operands
 //
 
+// Stack slots are addressed from sp, or from x28 in a function whose
+// stack pointer moves (variable length arrays): x28 holds sp as it was
+// after the prologue.
+static int frame_base(void) {
+  return fn->has_dynalloc ? 28 : R_SP;
+}
+
 static int vreg_phys(int r) {
   if (!is_vreg(r))
     return r;
@@ -204,7 +211,8 @@ static int use(int r, int which) {
     return p;
   int cls = reg_cls(r);
   int s = cls ? fpr_scratch[which] : gpr_scratch[which];
-  emitf("\tldr %s, [sp, #%lld]\n", cls ? vname(s, 8) : xname(s, 8), (long long)spill_offset(r));
+  emitf("\tldr %s, [%s, #%lld]\n", cls ? vname(s, 8) : xname(s, 8), xname(frame_base(), 8),
+        (long long)spill_offset(r));
   return s;
 }
 
@@ -228,8 +236,8 @@ static void finish_def(void) {
   if (pending_def == R_NONE)
     return;
   int s = pending_scratch;
-  emitf("\tstr %s, [sp, #%lld]\n", is_fpr_reg(s) ? vname(s, 8) : xname(s, 8),
-        (long long)spill_offset(pending_def));
+  emitf("\tstr %s, [%s, #%lld]\n", is_fpr_reg(s) ? vname(s, 8) : xname(s, 8),
+        xname(frame_base(), 8), (long long)spill_offset(pending_def));
   pending_def = R_NONE;
 }
 
@@ -246,7 +254,7 @@ static char *mem_operand(MemRef m, int size, int scratch, int base_which, bool *
   int base;
   int64_t off = m.off;
   if (m.slot >= 0) {
-    base = R_SP;
+    base = frame_base();
     off += slot_offset(m.slot);
   } else {
     base = use(m.base, base_which);
@@ -256,7 +264,7 @@ static char *mem_operand(MemRef m, int size, int scratch, int base_which, bool *
     // or a constant offset is first added into the scratch register.
     ASSERT(m.off == 0);
     int idx = use(m.index, 2);
-    if (off != 0 || base == R_SP) {
+    if (off != 0 || base == R_SP || m.slot >= 0) {
       emit_add_imm(scratch, base, off, 8);
       base = scratch;
     }
@@ -363,10 +371,10 @@ static void move_loc(int dst, int src, bool is_imm, int64_t imm, int sz) {
   if (is_imm) {
     if (dslot) {
       if (imm == 0) {
-        emitf("\tstr xzr, [sp, #%lld]\n", (long long)doff);
+        emitf("\tstr xzr, [%s, #%lld]\n", xname(frame_base(), 8), (long long)doff);
       } else {
         emit_mov_imm(R_X15, imm, 8);
-        emitf("\tstr x15, [sp, #%lld]\n", (long long)doff);
+        emitf("\tstr x15, [%s, #%lld]\n", xname(frame_base(), 8), (long long)doff);
       }
     } else if (is_fpr_reg(dst)) {
       emit_mov_imm(R_X15, imm, 8);
@@ -379,15 +387,15 @@ static void move_loc(int dst, int src, bool is_imm, int64_t imm, int sz) {
   bool sslot = src >= LOC_SLOT_BASE;
   int64_t soff = sslot ? slot_offset(src - LOC_SLOT_BASE) : 0;
   if (dslot && sslot) {
-    emitf("\tldr x15, [sp, #%lld]\n\tstr x15, [sp, #%lld]\n", (long long)soff, (long long)doff);
+    emitf("\tldr x15, [%s, #%lld]\n\tstr x15, [%s, #%lld]\n", xname(frame_base(), 8), (long long)soff, xname(frame_base(), 8), (long long)doff);
     return;
   }
   if (dslot) {
-    emitf("\tstr %s, [sp, #%lld]\n", rname(src, 8), (long long)doff);
+    emitf("\tstr %s, [%s, #%lld]\n", rname(src, 8), xname(frame_base(), 8), (long long)doff);
     return;
   }
   if (sslot) {
-    emitf("\tldr %s, [sp, #%lld]\n", rname(dst, 8), (long long)soff);
+    emitf("\tldr %s, [%s, #%lld]\n", rname(dst, 8), xname(frame_base(), 8), (long long)soff);
     return;
   }
   bool df = is_fpr_reg(dst), sf = is_fpr_reg(src);
@@ -500,6 +508,8 @@ static void prologue(void) {
   save_pairs(false);
   if (fn->frame_size)
     emit_add_imm(R_SP, R_SP, -fn->frame_size, 8);
+  if (fn->has_dynalloc)
+    emitf("\tmov x28, sp\n");
 }
 
 static void epilogue(void) {
@@ -633,7 +643,7 @@ static void emit_minst(Block *b, MInst *mi) {
   }
   case M_FRAME: {
     int rd = def(mi->rd);
-    emit_add_imm(rd, R_SP, slot_offset(mi->mem.slot) + mi->imm, 8);
+    emit_add_imm(rd, frame_base(), slot_offset(mi->mem.slot) + mi->imm, 8);
     finish_def();
     return;
   }
@@ -880,6 +890,29 @@ static void emit_minst(Block *b, MInst *mi) {
   case M_TRAP:
     emitf("\tbrk #0x1\n");
     return;
+  case M_DYNALLOC: {
+    // Round the size up to 16, move sp down, and return the space above
+    // the outgoing-argument area (which must stay at the bottom).
+    int rn = use(mi->rn, 0);
+    int rd = def(mi->rd);
+    emitf("\tadd x16, %s, #15\n", xname(rn, 8));
+    emitf("\tand x16, x16, #0xfffffffffffffff0\n");
+    emitf("\tsub sp, sp, x16\n");
+    emit_add_imm(rd, R_SP, align_up(fn->out_bytes, 16), 8);
+    finish_def();
+    return;
+  }
+  case M_STACKSAVE: {
+    int rd = def(mi->rd);
+    emitf("\tmov %s, sp\n", xname(rd, 8));
+    finish_def();
+    return;
+  }
+  case M_STACKRESTORE: {
+    int rn = use(mi->rn, 0);
+    emitf("\tmov sp, %s\n", xname(rn, 8));
+    return;
+  }
   }
   ICE("cannot emit machine op %d", mi->op);
 }
@@ -900,7 +933,7 @@ void emit_begin(FILE *o, const char *src_name) {
 
 static bool frame_needed(Func *f) {
   if (f->has_calls || f->nslots > 0 || f->used_callee_gpr || f->used_callee_fpr ||
-      f->frame_size > 0 || f->out_bytes > 0)
+      f->frame_size > 0 || f->out_bytes > 0 || f->has_dynalloc)
     return true;
   for (Block *b = f->entry; b; b = b->next)
     for (MInst *mi = b->mfirst; mi; mi = mi->next)

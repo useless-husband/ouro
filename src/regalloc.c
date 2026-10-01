@@ -43,7 +43,15 @@ int minst_regs(MInst *mi, int *uses, int *nuses, int *defs, int *ndefs) {
   case M_ARGADDR:
   case M_FRAME:
   case M_CSET:
+  case M_STACKSAVE:
     push_reg(defs, ndefs, mi->rd);
+    break;
+  case M_DYNALLOC:
+    push_reg(uses, nuses, mi->rn);
+    push_reg(defs, ndefs, mi->rd);
+    break;
+  case M_STACKRESTORE:
+    push_reg(uses, nuses, mi->rn);
     break;
   case M_MOV:
   case M_FMOV:
@@ -384,6 +392,8 @@ static bool reg_allowed(Interval *it, int reg) {
   }
   if (!(r <= 14 || (r >= 19 && r <= 28)))
     return false; // x15-x18 are scratch / reserved, x29-x31 special
+  if (r == 28 && fn->has_dynalloc)
+    return false; // the frame base when the stack pointer moves
   return !it->cross || (r >= 19 && r <= 28);
 }
 
@@ -592,6 +602,8 @@ void regalloc_func(Func *f) {
   }
   f->used_callee_gpr = 0;
   f->used_callee_fpr = 0;
+  if (f->has_dynalloc)
+    f->used_callee_gpr |= 1u << (28 - 19); // x28 is saved and used as the frame base
   nwords = (nv + 63) / 64 + 1;
 
   Block **blocks = xalloc(sizeof(Block *) * (f->nblocks + 1));
@@ -716,7 +728,7 @@ static const char *mop_name[] = {
     "cset",   "sxtb",  "sxth",  "sxtw",  "uxtb",  "uxth",    "uxtw",    "ldr",   "str",
     "fadd",   "fsub",  "fmul",  "fdiv",  "fneg",  "scvtf",   "ucvtf",   "fcvtzs", "fcvtzu",
     "fcvt",   "bl",    "blr",   "b",     "b.cond", "cbz",    "cbnz",    "ret",   "pmove",
-    "jtab",   "memcpy", "memzero", "trap",
+    "jtab",   "memcpy", "memzero", "trap", "dynalloc", "stacksave", "stackrestore",
 };
 
 static void print_reg(FILE *out, Func *f, int r) {

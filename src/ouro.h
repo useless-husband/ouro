@@ -368,6 +368,12 @@ struct Type {
   // Structs, unions and enums share the record so that qualified
   // copies refer to the same declaration.
   Record *rec;
+
+  // Variable length arrays (one dimension): the length expression, and
+  // the hidden local that holds its value once the object is declared.
+  bool is_vla;
+  Expr *vla_len;
+  Sym *vla_count;
 };
 
 struct Member {
@@ -582,6 +588,7 @@ typedef enum {
   S_RETURN,
   S_GOTO,
   S_LABEL,
+  S_VLA,      // allocation of a variable length array (var)
   S_NULL,
 } StmtKind;
 
@@ -614,6 +621,7 @@ struct Stmt {
   int ncases;
   Stmt *default_stmt;
   Block *bb;    // irgen: block of a case label
+  bool has_vla; // S_BLOCK: declares a variable length array
 };
 
 // An initializer tree.  For aggregates `elems` has one slot per array
@@ -777,6 +785,9 @@ typedef enum {
   IR_SWITCH, // args[0] matched against case_vals[i] -> blocks[i+1], else blocks[0]
   IR_RET,
   IR_UNREACHABLE,
+  IR_DYNALLOC,     // args[0] bytes of stack, 16-byte aligned; returns the address
+  IR_STACKSAVE,    // the current stack pointer
+  IR_STACKRESTORE, // args[0]: a value from IR_STACKSAVE
   IR_NUM_OPS,
 } IrOp;
 
@@ -888,6 +899,7 @@ struct Func {
   int out_bytes;  // largest outgoing stack-argument area
   bool has_calls;
   bool no_promote; // calls setjmp: keep variables in memory
+  bool has_dynalloc; // allocates variable length arrays: x28 is the frame base
 
   // machine level
   int nvregs;
@@ -1090,6 +1102,9 @@ typedef enum {
   M_MEMCPY,   // inline copy of imm bytes from mem2 to mem (small sizes)
   M_MEMZERO,  // inline zeroing of imm bytes at mem
   M_TRAP,
+  M_DYNALLOC,      // rd = address of rn more bytes of stack
+  M_STACKSAVE,     // rd = sp
+  M_STACKRESTORE,  // sp = rn
   M_NUM_OPS,
 } MOp;
 

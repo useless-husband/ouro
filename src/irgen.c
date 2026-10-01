@@ -29,6 +29,20 @@ static Block *continue_bb;
 static Inst *sret_slot;
 static int64_t va_area_off;
 
+// Blocks that declare variable length arrays save the stack pointer on
+// entry and restore it on exit.  break and continue leave such blocks
+// too, so each saved value remembers how many loops and switches
+// enclosed its block.
+typedef struct {
+  Inst *slot;
+  int breakable; // enclosing loops and switches
+  int loops;     // enclosing loops
+} VlaScope;
+static VlaScope vla_scopes[256];
+static int nvla;
+static int breakable_depth;
+static int loop_depth;
+
 static Inst *gen_expr(Expr *e);
 static Inst *gen_addr(Expr *e);
 static void gen_stmt(Stmt *s);
@@ -333,6 +347,8 @@ static Inst *gen_addr(Expr *e) {
     if (s->is_local) {
       if (!s->slot)
         ICE("local '%s' has no stack slot", s->name ? s->name->name : "?");
+      if (s->ty->is_vla)
+        return load(s->slot, IR_I64, false, false); // the slot holds the array's address
       return s->slot;
     }
     return global_addr(s);
@@ -1140,7 +1156,9 @@ static void gen_switch(Stmt *s) {
   Block *saved = break_bb;
   break_bb = end;
   start_dead_block(); // statements before the first label are unreachable
+  breakable_depth++;
   gen_stmt(s->then);
+  breakable_depth--;
   break_bb = saved;
   start_block(end);
 }
@@ -1226,10 +1244,60 @@ static void gen_fallthrough_return(void) {
   }
 }
 
+static void stack_restore(Inst *slot) {
+  Inst *saved = load(slot, IR_I64, false, false); // before the restore that uses it
+  Inst *r = emit(IR_STACKRESTORE, IR_VOID, 1);
+  r->args[0] = saved;
+}
+
+// Before a break (or continue) leaves VLA blocks, release their stack.
+static void restore_for_exit(bool is_continue) {
+  for (int k = 0; k < nvla; k++) {
+    bool inside = is_continue ? vla_scopes[k].loops == loop_depth
+                              : vla_scopes[k].breakable == breakable_depth;
+    if (inside) {
+      stack_restore(vla_scopes[k].slot);
+      return; // the outermost one restores everything inside it
+    }
+  }
+}
+
+static void gen_block(Stmt *s) {
+  if (!s->has_vla) {
+    for (int i = 0; i < s->nstmts; i++)
+      gen_stmt(s->stmts[i]);
+    return;
+  }
+  if (nvla == 256)
+    error_tok(s->tok, "variable length arrays nested too deeply");
+  Inst *slot = alloca_slot(8, 8, NULL);
+  store(emit(IR_STACKSAVE, IR_I64, 0), slot, IR_I64, false);
+  vla_scopes[nvla].slot = slot;
+  vla_scopes[nvla].breakable = breakable_depth;
+  vla_scopes[nvla].loops = loop_depth;
+  nvla++;
+  for (int i = 0; i < s->nstmts; i++)
+    gen_stmt(s->stmts[i]);
+  nvla--;
+  if (!terminated())
+    stack_restore(slot);
+}
+
 static void gen_stmt(Stmt *s) {
   switch (s->kind) {
   case S_NULL:
     return;
+  case S_VLA: {
+    Type *ty = s->var->ty;
+    Inst *n = gen_expr(ty->vla_len);
+    store(n, ty->vla_count->slot, IR_I64, false);
+    Inst *bytes = bin(IR_MUL, IR_I64, n, iconst(IR_I64, ty->base->size));
+    Inst *p = emit(IR_DYNALLOC, IR_I64, 1);
+    p->args[0] = bytes;
+    store(p, s->var->slot, IR_I64, false);
+    fn->has_dynalloc = true;
+    return;
+  }
   case S_EXPR:
     gen_expr(s->expr);
     return;
@@ -1237,8 +1305,7 @@ static void gen_stmt(Stmt *s) {
     gen_local_init(s->var->slot, s->vinit, s->var->ty);
     return;
   case S_BLOCK:
-    for (int i = 0; i < s->nstmts; i++)
-      gen_stmt(s->stmts[i]);
+    gen_block(s);
     return;
   case S_IF: {
     Block *t = new_block();
@@ -1272,7 +1339,11 @@ static void gen_stmt(Stmt *s) {
     break_bb = end;
     continue_bb = inc;
     start_block(body);
+    breakable_depth++;
+    loop_depth++;
     gen_stmt(s->then);
+    breakable_depth--;
+    loop_depth--;
     start_block(inc);
     if (s->inc)
       gen_expr(s->inc);
@@ -1295,7 +1366,11 @@ static void gen_stmt(Stmt *s) {
     break_bb = end;
     continue_bb = test;
     start_block(body);
+    breakable_depth++;
+    loop_depth++;
     gen_stmt(s->then);
+    breakable_depth--;
+    loop_depth--;
     start_block(test);
     gen_cond(s->expr, body, end);
     start_block(end);
@@ -1312,10 +1387,12 @@ static void gen_stmt(Stmt *s) {
     gen_stmt(s->then);
     return;
   case S_BREAK:
+    restore_for_exit(false);
     jmp(break_bb);
     start_dead_block();
     return;
   case S_CONTINUE:
+    restore_for_exit(true);
     jmp(continue_bb);
     start_dead_block();
     return;
@@ -1461,6 +1538,9 @@ Func *irgen_func(Sym *s) {
   continue_bb = NULL;
   sret_slot = NULL;
   last_alloca = NULL;
+  nvla = 0;
+  breakable_depth = 0;
+  loop_depth = 0;
 
   entry = new_block();
   ir_append_block(fn, entry);
@@ -1472,6 +1552,10 @@ Func *irgen_func(Sym *s) {
     Sym *var = s->locals.data[i];
     int64_t size = var->ty->size;
     int align = var->align;
+    if (var->ty->is_vla) {
+      var->slot = alloca_slot(8, 8, var->name); // holds the address of the storage
+      continue;
+    }
     if (var->is_param) {
       ArgClass c = abi_classify(var->ty);
       if (c.kind == AC_INDIRECT) {

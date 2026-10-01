@@ -989,6 +989,17 @@ static void sel_inst(Inst *i) {
   case IR_UNREACHABLE:
     add_mi(new_mi(M_TRAP));
     return;
+  case IR_DYNALLOC: {
+    int size = reg_of(i->args[0]);
+    mi_op(M_DYNALLOC, 8, vreg_of(i), size, R_NONE);
+    return;
+  }
+  case IR_STACKSAVE:
+    mi_op(M_STACKSAVE, 8, vreg_of(i), R_NONE, R_NONE);
+    return;
+  case IR_STACKRESTORE:
+    mi_op(M_STACKRESTORE, 8, R_NONE, reg_of(i->args[0]), R_NONE);
+    return;
   }
   ICE("cannot select %s", ir_op_name[i->op]);
 }

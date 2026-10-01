@@ -20,7 +20,8 @@ const char *ir_op_name[] = {
     "flt",     "fle",    "fgt",    "fge",    "sext8",   "sext16",  "zext8",   "zext16",
     "sext32",  "zext32", "trunc",  "sitof",  "uitof",   "ftosi",   "ftoui",   "fext",
     "ftrunc",  "bitcast", "load",  "store",  "memcpy",  "memzero", "call",    "phi",
-    "jmp",     "br",     "switch", "ret",    "unreachable",
+    "jmp",     "br",     "switch", "ret",    "unreachable", "dynalloc", "stacksave",
+    "stackrestore",
 };
 
 const char *ir_type_name[] = {"void", "i8", "i16", "i32", "i64", "f32", "f64"};
@@ -171,6 +172,9 @@ bool ir_has_side_effects(Inst *i) {
   case IR_SWITCH:
   case IR_RET:
   case IR_UNREACHABLE:
+  case IR_DYNALLOC:
+  case IR_STACKSAVE:
+  case IR_STACKRESTORE:
     return true;
   case IR_LOAD:
     return i->is_volatile;
@@ -194,6 +198,9 @@ bool ir_is_pure(Inst *i) {
   case IR_PARAM:
   case IR_ARGADDR:
   case IR_NOP:
+  case IR_DYNALLOC:
+  case IR_STACKSAVE:
+  case IR_STACKRESTORE:
     return false;
   default:
     return !ir_is_terminator(i->op);
@@ -504,6 +511,22 @@ void ir_verify(Func *f, const char *after) {
   if (!enabled)
     return;
   ir_compute_preds(f);
+  for (Block *b = f->entry; b; b = b->next)
+    for (Inst *i = b->first; i; i = i->next)
+      i->mark = false;
+  for (Block *b = f->entry; b; b = b->next) {
+    // Within a block, an operand defined there must come first.
+    for (Inst *i = b->first; i; i = i->next) {
+      if (i->op != IR_PHI)
+        for (int k = 0; k < i->nargs; k++)
+          if (i->args[k] && i->args[k]->bb == b && !i->args[k]->mark)
+            ICE("%s: %s: %%%d uses %%%d before its definition in bb%d", after, f->name, i->id,
+                i->args[k]->id, b->id);
+      i->mark = true;
+    }
+    for (Inst *i = b->first; i; i = i->next)
+      i->mark = false;
+  }
   for (Block *b = f->entry; b; b = b->next) {
     if (!b->last || !ir_is_terminator(b->last->op))
       ICE("%s: %s: block bb%d does not end in a terminator", after, f->name, b->id);

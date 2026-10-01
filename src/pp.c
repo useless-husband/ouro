@@ -1705,7 +1705,6 @@ void pp_init(void) {
       "#define __STDC_NO_ATOMICS__ 1\n"
       "#define __STDC_NO_COMPLEX__ 1\n"
       "#define __STDC_NO_THREADS__ 1\n"
-      "#define __STDC_NO_VLA__ 1\n"
       "#define __ouro__ 1\n"
       "#define __OURO_VERSION__ \"" OURO_VERSION "\"\n"
       "#define __APPLE__ 1\n"

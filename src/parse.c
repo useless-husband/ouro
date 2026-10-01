@@ -17,6 +17,7 @@ static int depth;            // 0 = file scope
 static Vec scope_stack;      // Binding* lists, one per open scope
 static Vec labels;           // Label* of the current function
 static Stmt *cur_switch;
+static bool block_has_vla;   // the block being parsed declares a VLA
 static Vec *cur_cases;       // S_CASE statements of the innermost switch
 static int loop_depth;       // enclosing loops (for continue)
 static int break_depth;      // enclosing loops and switches (for break)
@@ -619,7 +620,7 @@ typedef struct {
 
 static Type *func_params(Type *ret);
 
-static int64_t array_len(void) {
+static int64_t array_len(Expr **vla) {
   // [ static? qualifiers* expr? ] or [*]
   while (peek()->kind == KW_STATIC || peek()->kind == KW_CONST || peek()->kind == KW_VOLATILE ||
          peek()->kind == KW_RESTRICT)
@@ -638,8 +639,13 @@ static int64_t array_len(void) {
   int64_t n;
   if (!is_integer(e->ty))
     error_tok(t, "size of array has non-integer type '%s'", type_str(e->ty));
-  if (!eval_int_const(e, &n))
-    error_tok(t, "variable length arrays are not supported");
+  if (!eval_int_const(e, &n)) {
+    // A variable length array; whether one is allowed here is checked
+    // by the declaration.
+    expect(']', "after array size");
+    *vla = cast_to(e, ty_long);
+    return -1;
+  }
   if (n < 0 && !e->ty->is_unsigned)
     error_tok(t, "array has negative size");
   expect(']', "after array size");
@@ -652,8 +658,19 @@ static int64_t array_len(void) {
 static Type *type_suffixes(Type *ty) {
   if (peek()->kind == '[') {
     Token *t = next_tok();
-    int64_t n = array_len();
+    Expr *vla = NULL;
+    int64_t n = array_len(&vla);
     Type *inner = type_suffixes(ty);
+    if (inner->is_vla || (vla && inner->kind == TY_ARRAY && inner->len < 0))
+      error_tok(t, "multi-dimensional variable length arrays are not supported");
+    if (vla) {
+      if (inner->kind == TY_FUNC || inner->kind == TY_VOID || !is_complete(inner))
+        error_tok(t, "array has incomplete element type '%s'", type_str(inner));
+      Type *a = array_of(inner, -1);
+      a->is_vla = true;
+      a->vla_len = vla;
+      return a;
+    }
     if (inner->kind == TY_FUNC)
       error_tok(t, "'%s' declared as array of functions", type_str(inner));
     if (inner->kind == TY_VOID)
@@ -931,6 +948,8 @@ static void struct_members(Type *ty) {
       declarator_suffix(&mattr);
       if (m->ty->kind == TY_FUNC)
         error_tok(m->tok, "field declared as a function");
+      if (m->ty->is_vla)
+        error_tok(m->tok, "fields must have a constant size");
       int a = attr.align > mattr.align ? attr.align : mattr.align;
       if (a > m->ty->align) {
         m->ty = qualified(m->ty, 0);
@@ -1217,6 +1236,11 @@ static Stmt *init_declarators(Type *base, DeclAttr *attr, Token *start) {
     if (dattr.align && dattr.align < ty->align && !is_record(ty))
       dattr.align = ty->align;
 
+    if (ty->is_vla && (dattr.sc == SC_TYPEDEF || dattr.sc == SC_STATIC || dattr.sc == SC_EXTERN ||
+                       depth == 0))
+      error_tok(d.name, depth == 0 ? "variable length array declaration not allowed at file scope"
+                                   : "variable length array must have automatic storage duration");
+
     if (dattr.sc == SC_TYPEDEF) {
       Binding *b = current_scope_binding(d.name->ident);
       if (b && !(b->sym->kind == SYM_TYPEDEF && types_compatible(b->sym->ty, ty)))
@@ -1303,6 +1327,22 @@ static Stmt *init_declarators(Type *base, DeclAttr *attr, Token *start) {
       } else if (!is_complete(ty)) {
         error_tok(d.name, "variable has incomplete type '%s'", type_str(ty));
       }
+      if (accept(';'))
+        break;
+      continue;
+    }
+
+    if (ty->is_vla) {
+      if (peek()->kind == '=')
+        error_tok(peek(), "variable-sized object may not be initialized");
+      // The length is evaluated once, at the declaration, into a hidden
+      // local that sizeof reads later.
+      ty->vla_count = new_local(NULL, ty_long, d.name);
+      Sym *s = new_local(d.name->ident, ty, d.name);
+      Stmt *st = new_stmt(S_VLA, d.name);
+      st->var = s;
+      vec_push(&inits, st);
+      block_has_vla = true;
       if (accept(';'))
         break;
       continue;
@@ -1625,6 +1665,8 @@ static Stmt *statement(void) {
 Stmt *parse_compound_stmt_body(void) {
   Token *t = P.toks[P.pos - 1];
   Vec items = {0};
+  bool saved_vla = block_has_vla;
+  block_has_vla = false;
   while (!accept('}')) {
     if (peek()->kind == TK_EOF)
       error_tok(t, "expected '}' to match this '{'");
@@ -1639,6 +1681,8 @@ Stmt *parse_compound_stmt_body(void) {
   Stmt *blk = new_stmt(S_BLOCK, t);
   blk->stmts = (Stmt **)items.data;
   blk->nstmts = items.len;
+  blk->has_vla = block_has_vla;
+  block_has_vla = saved_vla;
   return blk;
 }
 

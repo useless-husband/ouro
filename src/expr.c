@@ -600,8 +600,14 @@ Expr *assign_conv(Expr *e, Type *ty, Token *tok, const char *what) {
 // Operators
 //
 
+static void check_vla_pointee(Type *base, Token *tok) {
+  if (base->is_vla)
+    error_tok(tok, "arithmetic on a pointer to a variable length array is not supported");
+}
+
 static Expr *ptr_add(Expr *p, Expr *idx, Token *tok, bool negate) {
   Type *base = p->ty->base;
+  check_vla_pointee(base, tok);
   if (!is_complete(base) && base->kind != TY_VOID)
     error_tok(tok, "arithmetic on a pointer to an incomplete type '%s'", type_str(base));
   if (base->kind == TY_FUNC)
@@ -643,6 +649,7 @@ static Expr *sub_expr(Expr *l, Expr *r, Token *tok) {
   if (is_ptr(l->ty) && is_integer(r->ty))
     return ptr_add(l, r, tok, true);
   if (is_ptr(l->ty) && is_ptr(r->ty)) {
+    check_vla_pointee(l->ty->base, tok);
     if (!pointee_compatible(l->ty, r->ty))
       error_tok(tok, "'%s' and '%s' are not pointers to compatible types", type_str(l->ty),
                 type_str(r->ty));
@@ -839,6 +846,7 @@ static Expr *op_assign(ExprKind op, Expr *l, Expr *r, Token *tok) {
     Type *base = l->ty->base;
     if (!is_complete(base) && base->kind != TY_VOID)
       error_tok(tok, "arithmetic on a pointer to an incomplete type '%s'", type_str(base));
+    check_vla_pointee(base, tok);
     e->op = E_PTRADD;
     e->cty = l->ty;
     e->scale = base->kind == TY_VOID ? 1 : base->size;
@@ -875,6 +883,7 @@ static Expr *incdec(Expr *l, int delta, bool post, Token *tok) {
   e->ival = delta;
   if (is_ptr(l->ty)) {
     Type *base = l->ty->base;
+    check_vla_pointee(base, tok);
     if (!is_complete(base) && base->kind != TY_VOID)
       error_tok(tok, "arithmetic on a pointer to an incomplete type '%s'", type_str(base));
     e->scale = base->kind == TY_VOID ? 1 : base->size;
@@ -1345,6 +1354,18 @@ static Expr *sizeof_expr(Token *t) {
     error_tok(t, "invalid application of 'sizeof' to a function type");
   if (ty->kind == TY_VOID)
     return new_iconst(1, ty_ulong, t);
+  if (ty->is_vla) {
+    // Evaluated at run time: the length saved at the declaration, or
+    // the expression of a type name.
+    Expr *n;
+    if (ty->vla_count) {
+      n = new_expr(E_VAR, ty_long, t);
+      n->sym = ty->vla_count;
+    } else {
+      n = ty->vla_len;
+    }
+    return binop(E_MUL, ty_ulong, cast_to(n, ty_ulong), new_iconst(ty->base->size, ty_ulong, t), t);
+  }
   if (!is_complete(ty))
     error_tok(t, "invalid application of 'sizeof' to an incomplete type '%s'", type_str(ty));
   return new_iconst(ty->size, ty_ulong, t);
