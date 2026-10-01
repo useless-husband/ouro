@@ -10,9 +10,9 @@ ouro 能編譯自己的原始碼，而它編出來的編譯器再編譯一次同
 $ make && make bootstrap
 stage2 and stage3 binaries are identical
 stage1 and stage2 emit identical assembly for all 20 source files
-stage2 build: 0.74 s, stage3 build: 0.79 s
-b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage2/ouro
-b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage3/ouro
+stage2 build: 0.72 s, stage3 build: 0.99 s
+1fb39d0582346b83d2d6b170d628149189d282aafe63efb6a699ce6dc32cf50e  build/stage2/ouro
+1fb39d0582346b83d2d6b170d628149189d282aafe63efb6a699ce6dc32cf50e  build/stage3/ouro
 ```
 
 第 1 階段是用 clang 編出的 ouro，第 2 階段是用第 1 階段編出的 ouro，第 3 階段是用第 2 階段編出的 ouro。自我編譯出的第 2 階段也通過迴歸測試與 c-testsuite（`make stage2-test`，CI 會跑），並能正確建置 Lua、zlib 與 SQLite。以下每個說法都附上可以驗證它的指令。

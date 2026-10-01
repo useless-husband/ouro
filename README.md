@@ -16,9 +16,9 @@ arm64 calling convention. It drives the system assembler and linker itself.
 $ make && make bootstrap
 stage2 and stage3 binaries are identical
 stage1 and stage2 emit identical assembly for all 20 source files
-stage2 build: 0.74 s, stage3 build: 0.79 s
-b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage2/ouro
-b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage3/ouro
+stage2 build: 0.72 s, stage3 build: 0.99 s
+1fb39d0582346b83d2d6b170d628149189d282aafe63efb6a699ce6dc32cf50e  build/stage2/ouro
+1fb39d0582346b83d2d6b170d628149189d282aafe63efb6a699ce6dc32cf50e  build/stage3/ouro
 ```
 
 Stage 1 is ouro built by clang, stage 2 is ouro built by stage 1, stage 3 is ouro
