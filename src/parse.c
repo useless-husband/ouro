@@ -627,8 +627,11 @@ static int64_t array_len(void) {
   if (accept(']'))
     return -1;
   if (peek()->kind == '*' && peek_at(1)->kind == ']') {
-    Token *t = next_tok();
-    error_tok(t, "variable length arrays are not supported");
+    // [*]: a variable length array of unspecified size, only valid in a
+    // prototype, where the parameter becomes a pointer anyway.
+    next_tok();
+    next_tok();
+    return -1;
   }
   Token *t = peek();
   Expr *e = parse_assign();
@@ -711,7 +714,23 @@ enum { NAME_REQUIRED, NAME_OPTIONAL, NAME_FORBIDDEN };
 static bool nested_declarator_follows(int mode) {
   if (mode == NAME_REQUIRED)
     return true;
-  Token *t = peek_at(1);
+  int k = 1;
+  Token *t = peek_at(k);
+  // Look past attributes: (__attribute__((x)) *p) is still nested.
+  while (t->kind == KW_ATTRIBUTE) {
+    t = peek_at(++k);
+    int depth = 0;
+    for (;;) {
+      if (t->kind == '(')
+        depth++;
+      else if (t->kind == ')' && --depth == 0)
+        break;
+      else if (t->kind == TK_EOF)
+        return false;
+      t = peek_at(++k);
+    }
+    t = peek_at(++k);
+  }
   return !(is_type_start(t) || t->kind == ')');
 }
 
@@ -725,6 +744,7 @@ static Declarator declarator(Type *ty, int mode) {
   Declarator d;
   memset(&d, 0, sizeof(d));
   d.tok = peek();
+  attributes(NULL);
   ty = pointers(ty);
 
   if (peek()->kind == '(' && nested_declarator_follows(mode)) {

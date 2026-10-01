@@ -427,8 +427,25 @@ static void write_data(int64_t off, Init *init, Member *bf) {
     return;
   }
   if (is_record(ty)) {
-    if (init->expr)
-      error_tok(init->expr->tok, "initializer element is not a compile-time constant");
+    if (init->expr) {
+      // A compound literal at file scope has a static image: copy it
+      // (GNU C accepts this as a constant initializer).
+      Expr *e = init->expr;
+      if (e->kind == E_COMPLIT && e->sym->is_global && e->ty->size == ty->size) {
+        if (e->sym->data)
+          memcpy(buf, e->sym->data, ty->size);
+        for (Reloc *r = e->sym->relocs; r; r = r->next) {
+          Reloc *c = xalloc(sizeof(Reloc));
+          *c = *r;
+          c->next = NULL;
+          c->offset = off + r->offset;
+          *reloc_tail = c;
+          reloc_tail = &c->next;
+        }
+        return;
+      }
+      error_tok(e->tok, "initializer element is not a compile-time constant");
+    }
     for (Member *m = ty->rec->members; m; m = m->next) {
       if (ty->kind == TY_UNION && init->union_mem != m)
         continue;

@@ -1425,8 +1425,46 @@ static void do_line(Token *directive, Token *first) {
   src->file = nf;
 }
 
+// #pragma push_macro("NAME") / pop_macro("NAME") save and restore a
+// macro definition (a common extension).
+typedef struct SavedMacro SavedMacro;
+struct SavedMacro {
+  SavedMacro *next;
+  Ident *name;
+  Macro *macro;
+};
+static SavedMacro *saved_macros;
+
+static void push_pop_macro(Token *line, bool push) {
+  Token *t = line->next; // after push_macro / pop_macro
+  if (t->kind != '(' || t->next->kind != TK_STR || t->next->next->kind != ')')
+    error_tok(line, "expected (\"name\") after #pragma %s", push ? "push_macro" : "pop_macro");
+  Token *s = t->next;
+  Ident *id = intern(s->text + 1, s->len - 2);
+  if (push) {
+    SavedMacro *m = xalloc(sizeof(SavedMacro));
+    m->name = id;
+    m->macro = id->macro;
+    m->next = saved_macros;
+    saved_macros = m;
+    return;
+  }
+  for (SavedMacro **pm = &saved_macros; *pm; pm = &(*pm)->next) {
+    if ((*pm)->name == id) {
+      id->macro = (*pm)->macro;
+      *pm = (*pm)->next;
+      return;
+    }
+  }
+}
+
 static void do_pragma(Token *directive) {
   Token *t = src->tok;
+  if (!(t->flags & TF_BOL) && (is_directive(t, "push_macro") || is_directive(t, "pop_macro"))) {
+    Token *line = read_line();
+    push_pop_macro(line, is_directive(line, "push_macro"));
+    return;
+  }
   if (!(t->flags & TF_BOL) && is_directive(t, "once")) {
     Source *s = src;
     map_put(&pragma_once, s->file->path, (void *)1);

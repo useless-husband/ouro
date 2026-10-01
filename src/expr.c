@@ -377,8 +377,64 @@ bool eval_int_const(Expr *e, int64_t *out) {
     *out = v;
     return true;
   }
-  case E_COMMA:
-    return false;
+  case E_NEG:
+  case E_BITNOT:
+  case E_NOT: {
+    int64_t v;
+    if (!eval_int_const(e->l, &v))
+      return false;
+    *out = wrap_int(e->kind == E_NEG ? (int64_t)(0 - (uint64_t)v) : e->kind == E_BITNOT ? ~v : !v,
+                    e->ty);
+    return true;
+  }
+  case E_ADD:
+  case E_SUB:
+  case E_MUL:
+  case E_DIV:
+  case E_MOD:
+  case E_SHL:
+  case E_SHR:
+  case E_BITAND:
+  case E_BITOR:
+  case E_BITXOR: {
+    int64_t a, b, v;
+    if (!is_integer(e->ty) || !eval_int_const(e->l, &a) || !eval_int_const(e->r, &b))
+      return false;
+    if (!fold_int_binary(e->kind, e->ty, a, b, &v))
+      return false;
+    *out = wrap_int(v, e->ty);
+    return true;
+  }
+  case E_EQ:
+  case E_NE:
+  case E_LT:
+  case E_LE:
+  case E_GT:
+  case E_GE: {
+    int64_t a, b;
+    if (!is_integer(e->l->ty) || !eval_int_const(e->l, &a) || !eval_int_const(e->r, &b))
+      return false;
+    *out = fold_compare(e->kind, e->l->ty, a, b);
+    return true;
+  }
+  case E_LOGAND:
+  case E_LOGOR: {
+    int64_t a, b;
+    if (!eval_int_const(e->l, &a))
+      return false;
+    if (e->kind == E_LOGAND && !a) {
+      *out = 0;
+      return true;
+    }
+    if (e->kind == E_LOGOR && a) {
+      *out = 1;
+      return true;
+    }
+    if (!eval_int_const(e->r, &b))
+      return false;
+    *out = b != 0;
+    return true;
+  }
   default:
     return false;
   }
@@ -1403,7 +1459,7 @@ static Expr *cast_expr(void) {
       error_tok(t, "used type '%s' where arithmetic or pointer type is required", type_str(ty));
     Expr *c = cast_to(e, ty);
     // A cast is never an lvalue, even when no conversion is needed.
-    if (is_lvalue(c) || c == e) {
+    if (is_lvalue(c)) {
       Expr *w = new_expr(E_CAST, unqual(ty), t);
       w->l = c;
       c = w;
