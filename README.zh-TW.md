@@ -24,8 +24,9 @@ stage2 build: 1.12 s, stage3 build: 1.51 s
 | [c-testsuite](https://github.com/c-testsuite/c-testsuite)（全部 220 個 single-exec 測試，測試時才下載，commit 5c72756） | -O0 與 -O1 都是 **220/220** | `make c-testsuite` |
 | 從官方原始碼包建置的 [Lua 5.4.7](https://www.lua.org)，執行 Lua 自己的測試套件 `all.lua` | 27 個測試檔全部通過（"final OK"）；連同 Lua 內部斷言與 C API 測試函式庫一起編進去也通過；測試用的 C 模組也由 ouro 編成動態函式庫 | `make lua` |
 | [zlib 1.3.1](https://zlib.net) | 它的 `example` 自我測試通過；`minigzip` 與系統的 `gzip` 雙向互通，而且壓縮結果和 clang 建置的版本逐位元組相同 | `make zlib` |
+| [SQLite 3.50.4](https://sqlite.org)（26 萬 3 千行的 amalgamation 與它的 shell，啟用 FTS5） | -O0 與 -O1 都能編譯；一組 SQL 工作負載（遞迴 CTE、視窗函式、JSON、FTS5、交易、`VACUUM`、`integrity_check`）的輸出和 clang 建置的版本完全相同 | `make sqlite` |
 | 呼叫慣例 | 每個亂數種子產生 80 種函式簽名的呼叫端與被呼叫端，分別用 ouro 與 clang 編譯並交叉組合，輸出都和全用 clang 的版本相同 | `make abi` |
-| 隨機程式 | 種子固定的產生器寫出定義良好的 C 程式，輸出和 clang 相同（`make test` 跑 40 個，`make fuzz` 跑 500 個） | `make fuzz` |
+| 隨機程式 | 種子固定的產生器寫出定義良好的 C 程式，-O0 與 -O1 的輸出都和 clang 相同：在最終版本的編譯器上跑了 1,000 個種子（2000–2999），0 個差異（`make test` 跑 40 個） | `make fuzz` |
 | 迴歸測試程式 | -O0 與 -O1 的輸出都和 clang 相同 | `make test` |
 
 `make test` 另外也會跑單元測試、前置處理器測試（token 序列和 `clang -E` 相同）、診斷訊息測試（訊息、行號、欄號與插入符號 `^` 都要正確），以及檢查最佳化後 IR 和產生的組合語言的 FileCheck 式測試。
@@ -85,21 +86,23 @@ oops.c:1:18: note: expanded from macro 'AREA'
 
 | 程式（執行時間，秒） | clang -O0 | clang -O2 | ouro -O0 | ouro -O1 | ouro -O1 對 clang -O0 | ouro -O1 對 clang -O2 |
 |---|---:|---:|---:|---:|---:|---:|
-| binarytrees.c | 0.797 | 0.663 | 0.720 | 0.701 | 1.14x | 0.94x |
-| fannkuch.c | 0.217 | 0.167 | 0.278 | 0.133 | 1.62x | 1.25x |
-| matmul.c | 0.264 | 0.030 | 0.419 | 0.064 | 4.13x | 0.46x |
-| nbody.c | 1.016 | 0.315 | 1.072 | 0.383 | 2.65x | 0.82x |
-| sieve.c | 1.264 | 1.175 | 2.216 | 1.133 | 1.12x | 1.04x |
-| Lua 5.4.7 執行 `tests/bench/fib.lua` | 0.232 | 0.076 | 0.202 | 0.147 | 1.58x | 0.51x |
+| binarytrees.c | 0.757 | 0.678 | 0.747 | 0.710 | 1.07x | 0.96x |
+| fannkuch.c | 0.210 | 0.162 | 0.276 | 0.129 | 1.62x | 1.25x |
+| matmul.c | 0.259 | 0.029 | 0.431 | 0.058 | 4.47x | 0.51x |
+| nbody.c | 0.920 | 0.282 | 1.043 | 0.348 | 2.64x | 0.81x |
+| sieve.c | 1.261 | 1.133 | 2.273 | 1.069 | 1.18x | 1.06x |
+| Lua 5.4.7 執行 `tests/bench/fib.lua` | 0.235 | 0.079 | 0.195 | 0.142 | 1.65x | 0.56x |
+| SQLite 3.50.4 執行 `tests/bench/sqlite-bench.sql` | 0.659 | 0.271 | 0.641 | 0.390 | 1.69x | 0.69x |
 
-ouro -O1 在每個程式上都比 clang -O0 快；和 clang -O2 相比，從大約一半的速度（clang 會做內聯、向量化與迴圈展開的地方：矩陣乘法、Lua 直譯器）到不相上下（受記憶體配置或記憶體頻寬限制的程式）。ouro 不做內聯、向量化、迴圈展開，也不做尾端呼叫消除。
+ouro -O1 在每個程式上都比 clang -O0 快，包括 Lua 直譯器與 SQLite；和 clang -O2 相比，從大約一半的速度（clang 會做內聯、向量化與迴圈展開的地方：矩陣乘法、Lua 直譯器），到 SQLite 的 0.7 倍，再到不相上下（受記憶體配置或記憶體頻寬限制的程式）。ouro 不做內聯、向量化、迴圈展開，也不做尾端呼叫消除。
 
-編譯速度：依序把所有檔案編成組合語言（3 次的中位數）：
+編譯速度：依序把所有檔案編成組合語言（3 次的中位數；每個檔案是一個獨立的行程，所以在許多小檔案上差距大多來自 clang 的啟動時間，在 SQLite 上則來自 clang 的最佳化）：
 
 | 編成組合語言（秒） | clang -O0 | clang -O2 | ouro -O0 | ouro -O1 | ouro -O1 對 clang -O0 | ouro -O1 對 clang -O2 |
 |---|---:|---:|---:|---:|---:|---:|
-| Lua 5.4.7（33 個檔案，23,940 行） | 1.195 | 2.233 | 0.258 | 0.299 | 4.00x | 7.48x |
-| ouro 自己（20 個檔案，15,597 行） | 0.756 | 1.836 | 0.113 | 0.133 | 5.68x | 13.80x |
+| Lua 5.4.7（33 個檔案，23,940 行） | 1.186 | 2.090 | 0.263 | 0.290 | 4.09x | 7.20x |
+| SQLite 3.50.4 amalgamation（1 個檔案，262,899 行） | 0.723 | 6.327 | 0.280 | 0.388 | 1.86x | 16.32x |
+| ouro 自己（20 個檔案，15,597 行） | 0.769 | 1.686 | 0.111 | 0.134 | 5.75x | 12.60x |
 
 `--time` 會列出每個階段花的時間。建置執行檔時還要執行系統的組譯器，每個檔案大約 0.05 秒，建置時間主要花在這裡。
 
@@ -120,7 +123,7 @@ ouro -O1 在每個程式上都比 clang -O0 快；和 clang -O2 相比，從大�
 
 ### 為什麼 ouro 自帶 libc 標頭檔
 
-Apple SDK 的標頭檔用了 Clang 的 blocks、可用性與可空性屬性、符號別名，以及用編譯器內建函式寫成的 inline 函式。與其實作這些擴充語法，ouro 在 `include/` 裡附了大約 30 個小標頭檔，宣告 C 程式需要的東西，而在二進位介面有影響的地方採用 Darwin 的結構配置與常數（`__stdinp`、`errno` 是 `*__error()`、48 個 int 的 `jmp_buf`、144 位元組的 `struct stat`、`realpath` 的 `$DARWIN_EXTSN` 符號）。程式如果需要 ouro 沒有提供的標頭檔或宣告，就要先補上才能編譯。
+Apple SDK 的標頭檔用了 Clang 的 blocks、可用性與可空性屬性、符號別名，以及用編譯器內建函式寫成的 inline 函式。與其實作這些擴充語法，ouro 在 `include/` 裡附了 41 個小標頭檔，宣告 C 程式需要的東西，而在二進位介面有影響的地方採用 Darwin 的結構配置與常數（`__stdinp`、`errno` 是 `*__error()`、48 個 int 的 `jmp_buf`、144 位元組的 `struct stat`、`realpath` 的 `$DARWIN_EXTSN` 符號）。程式如果需要 ouro 沒有提供的標頭檔或宣告，就要先補上才能編譯。
 
 ## 使用方式
 
@@ -141,7 +144,8 @@ build/ouro --help
 - 診斷在第一個錯誤就停止，沒有錯誤復原。
 - 最佳化器沒有內聯、迴圈展開、向量化、尾端呼叫消除，也沒有以型別為依據的別名分析。
 - 只能使用 `include/` 裡的標頭檔（見上文）。
-- 測試過的程式是 c-testsuite、Lua、zlib、ouro 自己，以及這個 repo 裡手寫與自動產生的測試；更大的程式碼很可能會遇到尚未支援的功能。
+- 測試過的程式是 c-testsuite、Lua、zlib、SQLite、ouro 自己，以及這個 repo 裡手寫與自動產生的測試；其他程式碼很可能會遇到尚未支援的功能或標頭檔。
+- 編譯期間記憶體從不釋放：編譯 SQLite 的 amalgamation 需要 550 MB。
 
 ## 相關專案
 
@@ -160,6 +164,7 @@ make bootstrap    # 三階段自我編譯檢查
 make c-testsuite  # 把測試套件下載到 build/
 make lua          # 把 Lua 5.4.7 與它的測試下載到 build/（會驗證雜湊值）
 make zlib         # 把 zlib 1.3.1 下載到 build/（會驗證雜湊值）
+make sqlite       # 把 SQLite 3.50.4 下載到 build/（會驗證雜湊值）
 make fuzz         # 500 個隨機程式；FUZZ_SEEDS=N 可以跑更多
 make abi          # 呼叫慣例測試，10 個種子
 make lint         # clang -Wall -Wextra -Wpedantic -Wshadow -Werror

@@ -86,6 +86,38 @@ def lua_speed(runs, tmp):
     return ("lua fib.lua", times)
 
 
+def sqlite_speed(runs, tmp):
+    src = os.path.join(ROOT, "build", "sqlite", "sqlite-amalgamation-3500400")
+    if not os.path.isdir(src):
+        return None
+    flags = ["-DSQLITE_THREADSAFE=0", "-DSQLITE_OMIT_LOAD_EXTENSION", "-DSQLITE_WITHOUT_ZONEMALLOC",
+             "-DSQLITE_ENABLE_LOCKING_STYLE=0"]
+    times, outs = {}, set()
+    for name, cc in BUILDS:
+        d = os.path.join(tmp, "sqlite-" + name.replace(" ", ""))
+        os.makedirs(d, exist_ok=True)
+        objs = []
+        for f in ("sqlite3.c", "shell.c"):
+            o = os.path.join(d, f[:-2] + ".o")
+            subprocess.run(cc + flags + ["-c", "-o", o, os.path.join(src, f)], check=True)
+            objs.append(o)
+        exe = os.path.join(d, "sqlite3")
+        subprocess.run(["clang", "-o", exe] + objs, check=True)
+        sql = open(os.path.join(BENCH, "sqlite-bench.sql"), "rb").read()
+        samples = []
+        out = None
+        for _ in range(runs):
+            t0 = time.perf_counter()
+            p = subprocess.run([exe, ":memory:"], input=sql, capture_output=True)
+            samples.append(time.perf_counter() - t0)
+            out = p.stdout
+        times[name] = statistics.median(samples)
+        outs.add(out)
+    if len(outs) != 1:
+        sys.exit("sqlite: builds disagree on the output")
+    return ("SQLite 3.50.4 running `tests/bench/sqlite-bench.sql`", times)
+
+
 def compile_speed(runs, tmp):
     """Seconds to compile a set of files to assembly, sequentially."""
     lua_src = os.path.join(ROOT, "build", "lua", "lua-5.4.7", "src")
@@ -95,6 +127,11 @@ def compile_speed(runs, tmp):
                  if f.endswith(".c") and f != "luac.c"]
         sets.append(("Lua 5.4.7 (%d files, %d lines)" % (len(files), count_lines(files)),
                      files, ["-DLUA_USE_MACOSX"]))
+    sq = os.path.join(ROOT, "build", "sqlite", "sqlite-amalgamation-3500400", "sqlite3.c")
+    if os.path.exists(sq):
+        sets.append(("SQLite 3.50.4 amalgamation (1 file, %d lines)" % count_lines([sq]), [sq],
+                     ["-DSQLITE_THREADSAFE=0", "-DSQLITE_OMIT_LOAD_EXTENSION",
+                      "-DSQLITE_WITHOUT_ZONEMALLOC", "-DSQLITE_ENABLE_LOCKING_STYLE=0"]))
     own = [os.path.join(ROOT, "src", f) for f in sorted(os.listdir(os.path.join(ROOT, "src")))
            if f.endswith(".c")]
     sets.append(("ouro itself (%d files, %d lines)" % (len(own), count_lines(own)), own, []))
@@ -141,6 +178,9 @@ def main():
         lua = lua_speed(a.runs, tmp)
         if lua:
             rows.append(lua)
+        sq = sqlite_speed(a.runs, tmp)
+        if sq:
+            rows.append(sq)
         comp = compile_speed(max(1, a.runs // 2), tmp)
     machine = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True,
                              text=True).stdout.strip()

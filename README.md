@@ -31,8 +31,9 @@ built by stage 2. Every claim below comes with the command that checks it.
 | [c-testsuite](https://github.com/c-testsuite/c-testsuite) (all 220 single-exec tests, fetched at test time, commit 5c72756) | **220/220** at -O0 and at -O1 | `make c-testsuite` |
 | [Lua 5.4.7](https://www.lua.org) built from its release tarball, running Lua's own test suite `all.lua` | all 27 test files pass ("final OK"), also with Lua's internal assertion and C-API test library compiled in; the suite's C modules are built by ouro as dynamic libraries | `make lua` |
 | [zlib 1.3.1](https://zlib.net) | its `example` self-test passes; `minigzip` round-trips with the system `gzip` both ways and writes the same bytes as a clang build | `make zlib` |
+| [SQLite 3.50.4](https://sqlite.org) (the 263,000-line amalgamation and its shell, FTS5 enabled) | compiles at -O0 and -O1; a SQL workload (recursive CTEs, window functions, JSON, FTS5, transactions, `VACUUM`, `integrity_check`) prints exactly what a clang build prints | `make sqlite` |
 | Calling convention | callers and callees generated for 80 signatures per seed, compiled by ouro and clang in every combination, print the same as an all-clang build | `make abi` |
-| Random programs | well-defined programs from a seeded generator print the same as with clang (700 seeds run during development, 0 differences after fixing the generator; `make test` runs 40) | `make fuzz` |
+| Random programs | well-defined programs from a seeded generator print the same as with clang at -O0 and -O1: 1,000 seeds (2000–2999) on the final compiler, 0 differences (`make test` runs 40) | `make fuzz` |
 | Regression programs | output identical to clang's at -O0 and -O1 | `make test` |
 
 `make test` also runs unit tests, preprocessor tests (token streams identical to
@@ -102,24 +103,29 @@ builds of a program must print the same output for its numbers to count.
 
 | program (run time, s) | clang -O0 | clang -O2 | ouro -O0 | ouro -O1 | ouro -O1 vs clang -O0 | ouro -O1 vs clang -O2 |
 |---|---:|---:|---:|---:|---:|---:|
-| binarytrees.c | 0.797 | 0.663 | 0.720 | 0.701 | 1.14x | 0.94x |
-| fannkuch.c | 0.217 | 0.167 | 0.278 | 0.133 | 1.62x | 1.25x |
-| matmul.c | 0.264 | 0.030 | 0.419 | 0.064 | 4.13x | 0.46x |
-| nbody.c | 1.016 | 0.315 | 1.072 | 0.383 | 2.65x | 0.82x |
-| sieve.c | 1.264 | 1.175 | 2.216 | 1.133 | 1.12x | 1.04x |
-| Lua 5.4.7 running `tests/bench/fib.lua` | 0.232 | 0.076 | 0.202 | 0.147 | 1.58x | 0.51x |
+| binarytrees.c | 0.757 | 0.678 | 0.747 | 0.710 | 1.07x | 0.96x |
+| fannkuch.c | 0.210 | 0.162 | 0.276 | 0.129 | 1.62x | 1.25x |
+| matmul.c | 0.259 | 0.029 | 0.431 | 0.058 | 4.47x | 0.51x |
+| nbody.c | 0.920 | 0.282 | 1.043 | 0.348 | 2.64x | 0.81x |
+| sieve.c | 1.261 | 1.133 | 2.273 | 1.069 | 1.18x | 1.06x |
+| Lua 5.4.7 running `tests/bench/fib.lua` | 0.235 | 0.079 | 0.195 | 0.142 | 1.65x | 0.56x |
+| SQLite 3.50.4 running `tests/bench/sqlite-bench.sql` | 0.659 | 0.271 | 0.641 | 0.390 | 1.69x | 0.69x |
 
-ouro -O1 beats clang -O0 on every program and ranges from about half of clang
--O2's speed (where clang inlines, vectorizes and unrolls: matmul, the Lua
-interpreter) to parity (allocation- and memory-bound code). It does no inlining,
+ouro -O1 beats clang -O0 on every program, including the Lua interpreter
+and SQLite, and ranges from about half of clang -O2's speed (where clang
+inlines, vectorizes and unrolls: matmul, the Lua interpreter) through 0.7x on
+SQLite to parity on allocation- and memory-bound code. It does no inlining,
 vectorization, unrolling or tail-call elimination.
 
-Compile time, sequentially compiling every file to assembly (median of 3 runs):
+Compile time, sequentially compiling every file to assembly (median of 3 runs;
+each file is a separate process, so on many small files much of the gap is
+clang's start-up time, and on SQLite it is clang's optimizer):
 
 | compile to assembly (s) | clang -O0 | clang -O2 | ouro -O0 | ouro -O1 | ouro -O1 vs clang -O0 | ouro -O1 vs clang -O2 |
 |---|---:|---:|---:|---:|---:|---:|
-| Lua 5.4.7 (33 files, 23,940 lines) | 1.195 | 2.233 | 0.258 | 0.299 | 4.00x | 7.48x |
-| ouro itself (20 files, 15,597 lines) | 0.756 | 1.836 | 0.113 | 0.133 | 5.68x | 13.80x |
+| Lua 5.4.7 (33 files, 23,940 lines) | 1.186 | 2.090 | 0.263 | 0.290 | 4.09x | 7.20x |
+| SQLite 3.50.4 amalgamation (1 file, 262,899 lines) | 0.723 | 6.327 | 0.280 | 0.388 | 1.86x | 16.32x |
+| ouro itself (20 files, 15,597 lines) | 0.769 | 1.686 | 0.111 | 0.134 | 5.75x | 12.60x |
 
 `--time` reports the time spent per phase. Building an executable additionally
 runs the system assembler, which takes about 0.05 s per file and dominates build
@@ -159,7 +165,7 @@ choices that were rejected.
 
 Apple's SDK headers use Clang blocks, availability and nullability attributes,
 symbol aliases and inline functions built on compiler builtins. Rather than
-implement those extensions, ouro ships about 30 small headers in `include/` that
+implement those extensions, ouro ships 41 small headers in `include/` that
 declare what C programs need, with Darwin's layouts and constants where the binary
 interface depends on them (`__stdinp`, `errno` as `*__error()`, the 48-int
 `jmp_buf`, the 144-byte `struct stat`, `realpath`'s `$DARWIN_EXTSN` symbol). A
@@ -193,9 +199,10 @@ compilers (`-g`, `-std=`, `-W...`, `-f...`) are accepted and ignored.
 - The optimizer has no inlining, unrolling, vectorization, tail-call elimination
   or type-based alias analysis.
 - Only the headers in `include/` are available (see above).
-- The tested programs are the c-testsuite, Lua, zlib, ouro itself, and the
-  generated and hand-written tests in this repository; larger code bases may well
-  find missing features.
+- The tested programs are the c-testsuite, Lua, zlib, SQLite, ouro itself, and
+  the generated and hand-written tests in this repository; other code bases may
+  well find missing features or headers.
+- Memory is never freed during a compilation: SQLite's amalgamation needs 550 MB.
 
 ## Related work
 
@@ -229,6 +236,7 @@ make bootstrap    # three-stage self-compilation check
 make c-testsuite  # fetches the suite into build/
 make lua          # fetches Lua 5.4.7 and its tests into build/ (checksums verified)
 make zlib         # fetches zlib 1.3.1 into build/ (checksum verified)
+make sqlite       # fetches SQLite 3.50.4 into build/ (checksum verified)
 make fuzz         # 500 random programs; FUZZ_SEEDS=N for more
 make abi          # calling-convention tests, 10 seeds
 make lint         # clang -Wall -Wextra -Wpedantic -Wshadow -Werror

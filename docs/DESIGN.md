@@ -18,8 +18,13 @@ when there are several, because the front end keeps global state), then runs the
 system assembler (`as -arch arm64`) and linker (`ld` with `-platform_version` and
 `-syslibroot` from `xcrun`) directly.
 
-Memory comes from an arena and is never freed. A compiler is a batch process; the
-largest input it has been given, Lua's `lvm.c`, peaks at 69 MB resident.
+Memory comes from an arena and is never freed. A compiler is a batch process, and
+for ordinary files this costs little (Lua's `lvm.c` peaks at 69 MB resident), but
+SQLite's 263,000-line amalgamation needs 550 MB: tokens produced by macro
+expansion are copies, and every function's IR and machine code stay allocated.
+Releasing per-function memory after its code is emitted would fix most of it; it
+was not done because a few objects created during code generation (cached pointer
+types, helper symbols) outlive the function.
 
 ## Front end
 
@@ -110,9 +115,9 @@ errors.
 ouro does not parse Apple's SDK headers. They use Clang blocks (`^`), availability
 and nullability attributes, `__asm` symbol aliases, inline functions written with
 compiler builtins, and many `__has_feature` checks; supporting all of that would
-be a large project unrelated to compiling C. Instead `include/` holds about 30
-small headers that declare what C programs (and ouro itself, Lua and zlib)
-need, with the layouts and constants of Darwin's libc where they matter for the
+be a large project unrelated to compiling C. Instead `include/` holds 41
+small headers that declare what C programs (and ouro itself, Lua, zlib and
+SQLite) need, with the layouts and constants of Darwin's libc where they matter for the
 binary interface:
 
 - `stdin`/`stdout`/`stderr` are Darwin's `__stdinp`/`__stdoutp`/`__stderrp`;
@@ -346,7 +351,7 @@ SDKs.
 | Programs | output identical to clang's at -O0 and -O1 | `tests/regress` |
 | ABI | ouro and clang callers and callees in every combination, 80 signatures per seed | `tests/abi`, `scripts/abi.sh` |
 | Random programs | well-defined generated programs, output compared with clang; a line-level reducer | `tests/fuzz` |
-| Suites | c-testsuite; Lua 5.4.7 and its test suite (also with Lua's internal assertions); zlib 1.3.1 | `scripts/` |
+| Suites | c-testsuite; Lua 5.4.7 and its test suite (also with Lua's internal assertions); zlib 1.3.1; SQLite 3.50.4 with a SQL workload | `scripts/` |
 | Self | three-stage bootstrap | `scripts/bootstrap.sh` |
 
 Bugs these layers found while ouro was written include: a branch emitted before
