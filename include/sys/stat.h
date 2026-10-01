@@ -60,6 +60,7 @@ int stat(const char *, struct stat *);
 int lstat(const char *, struct stat *);
 int fstat(int, struct stat *);
 int chmod(const char *, mode_t);
+int fchmod(int, mode_t);
 int mkdir(const char *, mode_t);
 mode_t umask(mode_t);
 #endif

@@ -15,6 +15,14 @@
 #define _SC_PAGESIZE 29
 #define _SC_NPROCESSORS_ONLN 58
 ssize_t read(int, void *, size_t);
+ssize_t pread(int, void *, size_t, off_t);
+ssize_t pwrite(int, const void *, size_t, off_t);
+ssize_t readlink(const char *restrict, char *restrict, size_t);
+int getpagesize(void);
+uid_t geteuid(void);
+int fchown(int, uid_t, gid_t);
+int symlink(const char *, const char *);
+int link(const char *, const char *);
 ssize_t write(int, const void *, size_t);
 int close(int);
 off_t lseek(int, off_t, int);

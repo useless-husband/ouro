@@ -1,0 +1,25 @@
+CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT, score REAL, grp INT);
+WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<20000)
+INSERT INTO t SELECT x, 'name' || (x*7919 % 1000), (x % 977) * 1.25 - 300.5, x % 13 FROM n;
+CREATE INDEX ix ON t(grp, score);
+SELECT grp, count(*), round(avg(score), 6), min(name), max(score) FROM t GROUP BY grp ORDER BY grp;
+SELECT name, score, rank() OVER (PARTITION BY grp ORDER BY score DESC) AS r FROM t WHERE id % 1000 = 0 ORDER BY id;
+SELECT printf('%.3f|%e|%10.2f|%x', sum(score), avg(score), max(score)/7, sum(id)) FROM t;
+SELECT json_object('a', 1, 'b', json_array(1, 2.5, 'x')), json_extract('{"k":[1,{"z":3}]}', '$.k[1].z');
+SELECT upper(substr(name, 2, 3)), length(name) FROM t WHERE id < 5;
+BEGIN; UPDATE t SET score = score * 2 WHERE grp = 3; DELETE FROM t WHERE id % 5 = 0; COMMIT;
+SELECT count(*), total(score) FROM t;
+SELECT a.grp, count(*) FROM t a JOIN t b ON a.id = b.id + 1 WHERE a.grp < 4 GROUP BY a.grp;
+PRAGMA integrity_check;
+CREATE TABLE kv(k TEXT PRIMARY KEY, v BLOB) WITHOUT ROWID;
+INSERT INTO kv SELECT 'key' || id, zeroblob(id % 50) FROM t WHERE id < 3000;
+SELECT count(*), sum(length(v)), max(k) FROM kv;
+CREATE VIRTUAL TABLE IF NOT EXISTS ft USING fts5(body);
+INSERT INTO ft SELECT name || ' ' || grp || ' words here' FROM t WHERE id < 2000;
+SELECT count(*) FROM ft WHERE ft MATCH 'name12';
+SELECT group_concat(DISTINCT grp) FROM (SELECT grp FROM t ORDER BY grp);
+SELECT typeof(1), typeof(1.5), typeof('x'), typeof(NULL), 7 / 2, 7.0 / 2, -7 % 3, 1e308 * 10, 9223372036854775807 + 1;
+SELECT strftime('%Y-%m-%d %H:%M:%S', 1700000000, 'unixepoch'), julianday('2000-01-01');
+SELECT quote(x'00ff10'), char(72, 105), instr('ouro compiler', 'comp'), replace('aaa', 'a', 'bb');
+VACUUM;
+PRAGMA integrity_check;

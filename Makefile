@@ -6,7 +6,7 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 SRCS    := $(wildcard src/*.c)
 HDRS    := src/ouro.h
 
-.PHONY: all test regress abi bootstrap c-testsuite lua zlib fuzz clean lint sanitize
+.PHONY: all test regress abi bootstrap c-testsuite lua zlib sqlite fuzz clean lint sanitize
 
 all: build/ouro
 
@@ -41,6 +41,9 @@ lua: build/ouro
 
 zlib: build/ouro
 	scripts/zlib.sh build/ouro -O1
+
+sqlite: build/ouro
+	scripts/sqlite.sh build/ouro -O1
 
 # FUZZ_SEEDS=N make fuzz runs more random programs
 fuzz: build/ouro

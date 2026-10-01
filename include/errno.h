@@ -43,4 +43,14 @@ extern int *__error(void);
 #define ENOTEMPTY 66
 #define EILSEQ 92
 #define EOVERFLOW 84
+#define ENOTSUP 45
+#define ENOTSOCK 38
+#define EALREADY 37
+#define ENOTCONN 57
+#define ETIMEDOUT 60
+#define ECONNREFUSED 61
+#define ELOOP 62
+#define ENOLCK 77
+#define EDEVERR 83
+#define EOPNOTSUPP 102
 #endif
