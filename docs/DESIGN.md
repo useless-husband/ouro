@@ -352,7 +352,7 @@ SDKs.
 | ABI | ouro and clang callers and callees in every combination, 80 signatures per seed | `tests/abi`, `scripts/abi.sh` |
 | Random programs | well-defined generated programs, output compared with clang; a line-level reducer | `tests/fuzz` |
 | Suites | c-testsuite; Lua 5.4.7 and its test suite (also with Lua's internal assertions); zlib 1.3.1; SQLite 3.50.4 with a SQL workload | `scripts/` |
-| Self | three-stage bootstrap | `scripts/bootstrap.sh` |
+| Self | three-stage bootstrap; the stage 2 compiler runs the regression, unit/IR and c-testsuite tests | `scripts/bootstrap.sh`, `make stage2-test` |
 
 Bugs these layers found while ouro was written include: a branch emitted before
 the instructions computing its condition (only Lua's internal assertions, which
@@ -360,7 +360,18 @@ branch on string literal addresses, exposed it); a shift folded into an add whos
 operands were later swapped (zlib at -O0); quadratic phi evaluation in SCCP that
 took 4.3 s on Lua's interpreter loop; a VLA stack restore placed before the load
 it used; and executables linked with platform version 11.0, which made the system
-allocator 15% slower than for the same object linked by clang. The random program
+allocator 15% slower than for the same object linked by clang.
+
+Two bugs were undefined behaviour in ouro's own source, and the bootstrap is what
+made one of them visible. Lowering a switch enumerated case values with
+`for (x = lo; x <= hi; x++)`, which never terminates when `hi` is `INT64_MAX`. The
+clang-built stage 1 happened to stop (clang may assume signed overflow does not
+happen); the ouro-built stage 2, whose additions wrap, ran off the end of an array
+and crashed on a test with `case LONG_MAX:`. Since then `make stage2-test` runs
+the regression tests, the unit and IR tests and the c-testsuite with the stage 2
+compiler, and a UBSan build of ouro has compiled Lua, zlib, SQLite, the
+c-testsuite, its own sources and 100 random programs without a report (it had
+found the other bug, a negation of `INT64_MIN` when checking immediates). The random program
 generator's first version produced two false alarms, both programs whose result
 depends on unspecified evaluation order (a global modified by a callee and read in
 the same expression); calls are now generated only as statements.

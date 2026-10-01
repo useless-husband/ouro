@@ -10,12 +10,12 @@ ouro 能編譯自己的原始碼，而它編出來的編譯器再編譯一次同
 $ make && make bootstrap
 stage2 and stage3 binaries are identical
 stage1 and stage2 emit identical assembly for all 20 source files
-stage2 build: 1.12 s, stage3 build: 1.51 s
-7c82f7fa553f1d6f03783cdf637112f31af146b2779fe404dd7bf57f204648e5  build/stage2/ouro
-7c82f7fa553f1d6f03783cdf637112f31af146b2779fe404dd7bf57f204648e5  build/stage3/ouro
+stage2 build: 0.74 s, stage3 build: 0.79 s
+b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage2/ouro
+b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage3/ouro
 ```
 
-第 1 階段是用 clang 編出的 ouro，第 2 階段是用第 1 階段編出的 ouro，第 3 階段是用第 2 階段編出的 ouro。以下每個說法都附上可以驗證它的指令。
+第 1 階段是用 clang 編出的 ouro，第 2 階段是用第 1 階段編出的 ouro，第 3 階段是用第 2 階段編出的 ouro。自我編譯出的第 2 階段也通過迴歸測試與 c-testsuite（`make stage2-test`，CI 會跑），並能正確建置 Lua、zlib 與 SQLite。以下每個說法都附上可以驗證它的指令。
 
 ## 能編譯什麼
 
@@ -161,6 +161,7 @@ build/ouro --help
 ```sh
 make test         # 單元、前置處理器、診斷、IR、組合語言、迴歸、ABI 與隨機程式測試
 make bootstrap    # 三階段自我編譯檢查
+make stage2-test  # 用自我編譯出的編譯器跑迴歸、單元/IR 與 c-testsuite 測試
 make c-testsuite  # 把測試套件下載到 build/
 make lua          # 把 Lua 5.4.7 與它的測試下載到 build/（會驗證雜湊值）
 make zlib         # 把 zlib 1.3.1 下載到 build/（會驗證雜湊值）

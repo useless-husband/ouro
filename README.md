@@ -16,13 +16,15 @@ arm64 calling convention. It drives the system assembler and linker itself.
 $ make && make bootstrap
 stage2 and stage3 binaries are identical
 stage1 and stage2 emit identical assembly for all 20 source files
-stage2 build: 1.12 s, stage3 build: 1.51 s
-7c82f7fa553f1d6f03783cdf637112f31af146b2779fe404dd7bf57f204648e5  build/stage2/ouro
-7c82f7fa553f1d6f03783cdf637112f31af146b2779fe404dd7bf57f204648e5  build/stage3/ouro
+stage2 build: 0.74 s, stage3 build: 0.79 s
+b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage2/ouro
+b792e17916f40a02169d4d0428e500d81eaa69c0901848981abb2e0aaf8e76f9  build/stage3/ouro
 ```
 
 Stage 1 is ouro built by clang, stage 2 is ouro built by stage 1, stage 3 is ouro
-built by stage 2. Every claim below comes with the command that checks it.
+built by stage 2. The self-compiled stage 2 also passes the regression tests and
+the c-testsuite (`make stage2-test`, run in CI) and builds Lua, zlib and SQLite
+correctly. Every claim below comes with the command that checks it.
 
 ## What it can compile
 
@@ -233,6 +235,7 @@ is meant as a readable example of that, not as a replacement for clang.
 ```sh
 make test         # unit, preprocessor, diagnostic, IR, assembly, regression, ABI and random-program tests
 make bootstrap    # three-stage self-compilation check
+make stage2-test  # the self-compiled compiler runs the regression, unit/IR and c-testsuite tests
 make c-testsuite  # fetches the suite into build/
 make lua          # fetches Lua 5.4.7 and its tests into build/ (checksums verified)
 make zlib         # fetches zlib 1.3.1 into build/ (checksum verified)
