@@ -414,6 +414,34 @@ static void assemble(char *input, char *output) {
   run(&args);
 }
 
+static char *command_output(const char *cmd) {
+  FILE *p = popen(cmd, "r");
+  if (!p)
+    return NULL;
+  char buf[PATH_MAX];
+  char *res = NULL;
+  if (fgets(buf, sizeof(buf), p)) {
+    buf[strcspn(buf, "\n")] = '\0';
+    if (buf[0])
+      res = xstrdup(buf);
+  }
+  pclose(p);
+  return res;
+}
+
+// The platform version recorded in the executable.  macOS enables some
+// library behaviour by the version a program was linked for (the
+// allocator, for one), so use what clang would: the deployment target
+// if set, otherwise the SDK version.
+static char *platform_version(char **sdk_out) {
+  char *sdk = command_output("xcrun --sdk macosx --show-sdk-version 2>/dev/null");
+  if (!sdk)
+    sdk = "11.0";
+  char *min = getenv("MACOSX_DEPLOYMENT_TARGET");
+  *sdk_out = sdk;
+  return (min && *min) ? min : sdk;
+}
+
 static char *sdk_path(void) {
   char *env = getenv("SDKROOT");
   if (env && *env)
@@ -436,10 +464,12 @@ static void link_objects(Vec *objs, char *output) {
   vec_push(&args, "ld");
   vec_push(&args, "-arch");
   vec_push(&args, "arm64");
+  char *sdk_version;
+  char *min_version = platform_version(&sdk_version);
   vec_push(&args, "-platform_version");
   vec_push(&args, "macos");
-  vec_push(&args, "11.0.0");
-  vec_push(&args, "11.0.0");
+  vec_push(&args, min_version);
+  vec_push(&args, sdk_version);
   char *sdk = sdk_path();
   if (sdk) {
     vec_push(&args, "-syslibroot");
