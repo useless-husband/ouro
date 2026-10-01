@@ -5,6 +5,7 @@
 
 #include <limits.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 // From <mach-o/dyld.h>; declared here so that ouro's own headers do not
@@ -17,6 +18,19 @@ static bool opt_S;
 static bool opt_c;
 static bool opt_v;
 static bool opt_shared;
+static bool opt_time;
+
+// --time: wall-clock time per compiler phase.
+enum { PH_PP, PH_PARSE, PH_IRGEN, PH_OPT, PH_ISEL, PH_RA, PH_EMIT, PH_COUNT };
+static const char *phase_name[] = {"preprocess", "parse",   "irgen", "optimize",
+                                   "isel",       "regalloc", "emit"};
+static double phase_time[PH_COUNT];
+
+static double now_sec(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 static char *opt_o;
 static Vec input_files;
 static Vec link_args;
@@ -41,6 +55,7 @@ static void usage(int status) {
           "  --dump-ir      print the optimised IR of each function to stderr\n"
           "  --dump-ir-raw  print the IR before optimisation\n"
           "  --dump-mir     print machine code after register allocation\n"
+          "  --time         report the time spent in each compiler phase\n"
           "  -shared        link a dynamic library\n"
           "  -l<lib> -L<dir> -Wl,<args>   passed to the linker\n"
           "  -v             show the commands that are run\n"
@@ -145,6 +160,10 @@ static void parse_args(int argc, char **argv) {
     }
     if (str_eq(a, "--dump-ir-raw")) {
       opt_dump_ir_raw = true;
+      continue;
+    }
+    if (str_eq(a, "--time")) {
+      opt_time = true;
       continue;
     }
     if (str_eq(a, "--dump-mir")) {
@@ -305,6 +324,7 @@ static void setup_includes(void) {
 
 static void compile_to_asm(char *input, char *output) {
   opt_base_file = input;
+  double t = now_sec();
   pp_init();
   for (int i = 0; i < macro_ops.len; i++) {
     char *op = macro_ops.data[i];
@@ -329,27 +349,58 @@ static void compile_to_asm(char *input, char *output) {
   }
 
   convert_keywords_and_literals(tok);
+  double t2 = now_sec();
+  phase_time[PH_PP] += t2 - t;
+  t = t2;
   Program *prog = parse_program(tok);
+  t2 = now_sec();
+  phase_time[PH_PARSE] += t2 - t;
+  t = t2;
 
   emit_begin(out, input);
   for (int i = 0; i < prog->funcs.len; i++) {
     Sym *fn = prog->funcs.data[i];
     Func *f = irgen_func(fn);
+    t2 = now_sec();
+    phase_time[PH_IRGEN] += t2 - t;
+    t = t2;
     if (opt_dump_ir_raw)
       ir_dump(stderr, f);
     optimize(f);
     if (opt_dump_ir)
       ir_dump(stderr, f);
+    t2 = now_sec();
+    phase_time[PH_OPT] += t2 - t;
+    t = t2;
     isel_func(f);
+    t2 = now_sec();
+    phase_time[PH_ISEL] += t2 - t;
+    t = t2;
     regalloc_func(f);
+    t2 = now_sec();
+    phase_time[PH_RA] += t2 - t;
+    t = t2;
     if (opt_dump_mir)
       mir_dump(stderr, f);
     emit_func(f);
+    t2 = now_sec();
+    phase_time[PH_EMIT] += t2 - t;
+    t = t2;
   }
   emit_data(prog);
   emit_end();
   if (out != stdout && fclose(out) != 0)
     fatal("cannot write '%s': %s", output, strerror(errno));
+  phase_time[PH_EMIT] += now_sec() - t;
+  if (opt_time) {
+    double total = 0;
+    for (int i = 0; i < PH_COUNT; i++)
+      total += phase_time[i];
+    fprintf(stderr, "%s:", input);
+    for (int i = 0; i < PH_COUNT; i++)
+      fprintf(stderr, " %s %.1fms", phase_name[i], phase_time[i] * 1000);
+    fprintf(stderr, " total %.1fms\n", total * 1000);
+  }
 }
 
 static void assemble(char *input, char *output) {

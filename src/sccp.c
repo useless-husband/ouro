@@ -322,6 +322,8 @@ static void set_lattice(Inst *i, int l, int64_t iv, double fv) {
   vec_push(&ssa_work, i);
 }
 
+static void visit(Inst *i);
+
 static void mark_edge(Block *from, Block *to) {
   int idx = ir_pred_index(to, from);
   ASSERT(idx >= 0);
@@ -333,9 +335,10 @@ static void mark_edge(Block *from, Block *to) {
     to->mark = true;
     vec_push(&flow_work, to);
   } else {
-    // A new executable edge into a reached block: its phis may change.
+    // A new executable edge into a reached block: re-evaluate its phis.
+    // Their users are notified only if a value actually changes.
     for (Inst *p = to->first; p && p->op == IR_PHI; p = p->next)
-      vec_push(&ssa_work, p);
+      visit(p);
   }
 }
 
@@ -356,7 +359,7 @@ static void visit(Inst *i) {
     Inst *c = NULL;
     bool bottom = false;
     for (int k = 0; k < i->nargs; k++) {
-      int idx = ir_pred_index(b, i->blocks[k]);
+      int idx = i->arg_edge[k];
       if (idx < 0 || !edge_exec[edge_base[b->id] + idx])
         continue;
       Inst *a = i->args[k];
@@ -451,6 +454,22 @@ bool opt_sccp(Func *f) {
       i->lattice = LAT_TOP;
   }
   edge_exec = xalloc(sizeof(bool) * (total + 1));
+  // Phi operand -> incoming edge index, computed once: a dispatch block
+  // can have hundreds of predecessors, and phis are re-evaluated often.
+  int *slot_of = xalloc(sizeof(int) * (f->next_block_id + 1));
+  for (Block *b = f->entry; b; b = b->next) {
+    if (!b->first || b->first->op != IR_PHI)
+      continue;
+    for (int p = 0; p < b->npreds; p++)
+      slot_of[b->preds[p]->id] = p + 1;
+    for (Inst *i = b->first; i && i->op == IR_PHI; i = i->next) {
+      i->arg_edge = xalloc(sizeof(int) * (i->nargs + 1));
+      for (int k = 0; k < i->nargs; k++)
+        i->arg_edge[k] = slot_of[i->blocks[k]->id] - 1;
+    }
+    for (int p = 0; p < b->npreds; p++)
+      slot_of[b->preds[p]->id] = 0;
+  }
   flow_work.len = 0;
   ssa_work.len = 0;
   f->entry->mark = true;
@@ -464,8 +483,6 @@ bool opt_sccp(Func *f) {
       continue;
     }
     Inst *i = ssa_work.data[--ssa_work.len];
-    if (i->op == IR_PHI && i->bb)
-      visit(i); // re-evaluate a phi after a new edge
     for (int k = 0; k < i->nusers; k++)
       visit(i->users[k]);
   }

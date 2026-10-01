@@ -836,6 +836,7 @@ struct Inst {
   Inst **users;
   int nusers;
   int lattice;    // SCCP
+  int *arg_edge;  // SCCP: for each phi operand, the index of its edge into the block
   int64_t lat_i;
   double lat_f;
   int vreg;
