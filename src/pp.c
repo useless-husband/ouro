@@ -528,14 +528,11 @@ static void push_expansion(Token *list, Token *invocation, Hideset *hs) {
   if (!list)
     return;
   Token *origin = invocation->origin ? invocation->origin : invocation;
-  Token *last = NULL;
   for (Token *t = list; t; t = t->next) {
     t->hs = hs_union(hs, t->hs);
     t->origin = origin;
-    last = t;
   }
   list->flags = (list->flags & ~(TF_SPACE | TF_BOL)) | (invocation->flags & (TF_SPACE | TF_BOL));
-  (void)last;
   push_source(list, false, NULL);
 }
 
@@ -1473,7 +1470,6 @@ static void do_pragma(Token *directive) {
     return;
   }
   // Other pragmas (pack, GCC diagnostic, clang ...) are ignored.
-  (void)directive;
   read_line();
 }
 

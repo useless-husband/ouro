@@ -378,7 +378,7 @@ static Type *struct_or_union(void);
 static Type *enum_specifier(void);
 
 static Type *typeof_specifier(void) {
-  Token *t = next_tok();
+  next_tok();
   expect('(', "after typeof");
   Type *ty;
   if (is_type_start(peek())) {
@@ -388,7 +388,6 @@ static Type *typeof_specifier(void) {
     ty = e->ty;
   }
   expect(')', "after typeof operand");
-  (void)t;
   return ty;
 }
 
@@ -866,10 +865,8 @@ static Type *func_params(Type *ret) {
 }
 
 Type *parse_typename(void) {
-  Token *t = peek();
   Type *base = declspec(NULL);
   Declarator d = declarator(base, NAME_FORBIDDEN);
-  (void)t;
   return d.ty;
 }
 
@@ -1718,7 +1715,6 @@ static void function_definition(Sym *fn, Declarator *d) {
     ptypes[i] = dty->params[i];
   if (knr) {
     while (peek()->kind != '{') {
-      Token *start = peek();
       DeclAttr attr;
       memset(&attr, 0, sizeof(attr));
       Type *base = declspec(&attr);
@@ -1740,7 +1736,6 @@ static void function_definition(Sym *fn, Declarator *d) {
           break;
         expect(',', "between parameter declarators");
       }
-      (void)start;
     }
     fn->is_knr = true;
   } else if (!dty->has_proto && dty->nparams == 0 && peek()->kind != '{') {

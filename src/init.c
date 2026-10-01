@@ -171,11 +171,9 @@ static int64_t designation(Init *init, bool top) {
       if (at_designator())
         error_tok(t, "nested designators after a range designator are not supported");
       expect('=', "after designator");
-      Token *vt = peek();
       int save = P.pos;
       for (int64_t i = idx; i <= hi; i++) {
-        P.pos = save;
-        (void)vt;
+        P.pos = save; // the same value for each element
         init_one(child(init, i));
       }
       idx = hi;

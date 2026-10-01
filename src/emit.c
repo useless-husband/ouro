@@ -928,11 +928,10 @@ static void emit_minst(Block *b, MInst *mi) {
 //
 
 static bool section_text;
-static const char *source_name;
 
 void emit_begin(FILE *o, const char *src_name) {
+  (void)src_name;
   out = o;
-  source_name = src_name;
   section_text = false;
   emitf("\t.build_version macos, 11, 0\n");
 }
@@ -1061,6 +1060,5 @@ void emit_data(Program *prog) {
   }
 }
 
-void emit_end(void) {
-  (void)source_name;
-}
+// Nothing follows the data; kept as the counterpart of emit_begin.
+void emit_end(void) {}
