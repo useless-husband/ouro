@@ -6,7 +6,7 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 SRCS    := $(wildcard src/*.c)
 HDRS    := src/ouro.h
 
-.PHONY: all test regress abi bootstrap stage2-test c-testsuite lua zlib sqlite fuzz clean lint sanitize
+.PHONY: all test regress abi bench bootstrap stage2-test c-testsuite lua zlib sqlite fuzz clean lint sanitize
 
 all: build/ouro
 
@@ -50,6 +50,11 @@ zlib: build/ouro
 
 sqlite: build/ouro
 	scripts/sqlite.sh build/ouro -O1
+
+# Generated-code and compiler speed against clang (needs build/lua and
+# build/sqlite from make lua / make sqlite for the interpreter rows).
+bench: build/ouro
+	python3 scripts/bench.py --runs 7
 
 # FUZZ_SEEDS=N make fuzz runs more random programs
 fuzz: build/ouro

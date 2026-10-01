@@ -24,7 +24,9 @@ First version.
 - Own C library headers for macOS.
 
 ### Verification
-- Three-stage bootstrap with byte-identical stage 2 and stage 3.
+- Three-stage bootstrap with byte-identical stage 2 and stage 3; the stage 2
+  compiler also passes the regression, unit/IR and c-testsuite tests.
 - c-testsuite 220/220 at `-O0` and `-O1`; Lua 5.4.7 and its test suite; zlib
-  1.3.1; calling-convention tests against clang; seeded random program tests;
-  unit, preprocessor, diagnostic, IR and assembly tests.
+  1.3.1; SQLite 3.50.4 with a SQL workload; calling-convention tests against
+  clang; seeded random program tests; unit, preprocessor, diagnostic, IR and
+  assembly tests; ouro built with UBSan over all of the above.
